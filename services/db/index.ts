@@ -36,3 +36,12 @@ export {
   type OpenLoop,
   type CreateOpenLoopInput,
 } from "./repositories/openLoops.js";
+export {
+  writeBlackboard,
+  listMind,
+  dismissBlackboard,
+  clearAgentEntries,
+  type BlackboardEntry,
+  type WriteBlackboardInput,
+} from "./repositories/blackboard.js";
+export type { BlackboardStatus } from "./types.js";

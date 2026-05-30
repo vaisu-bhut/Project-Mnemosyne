@@ -7,6 +7,7 @@ export const QUEUES = {
   ingest: "ingest",
   extract: "extract",
   consolidate: "consolidate",
+  nudge: "nudge",
 } as const;
 
 export interface IngestJob {
@@ -17,6 +18,7 @@ export interface ExtractJob {
   sourceId: string;
 }
 export type ConsolidateJob = Record<string, never>;
+export type NudgeJob = Record<string, never>;
 
 export function createIngestQueue(connection: Redis): Queue<IngestJob> {
   return new Queue<IngestJob>(QUEUES.ingest, { connection });
@@ -26,4 +28,7 @@ export function createExtractQueue(connection: Redis): Queue<ExtractJob> {
 }
 export function createConsolidateQueue(connection: Redis): Queue<ConsolidateJob> {
   return new Queue<ConsolidateJob>(QUEUES.consolidate, { connection });
+}
+export function createNudgeQueue(connection: Redis): Queue<NudgeJob> {
+  return new Queue<NudgeJob>(QUEUES.nudge, { connection });
 }

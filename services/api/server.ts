@@ -6,10 +6,18 @@ import type { AppConfig } from "../config/index.js";
 import {
   createDb,
   createSource,
+  dismissBlackboard,
+  listMind,
   listOpenLoops,
   type Db,
   type LoopStatus,
 } from "../db/index.js";
+import {
+  briefEntity,
+  relationshipHealthAll,
+  route,
+  runNudger,
+} from "../agents/index.js";
 import { createQueryEmbedder, type Embedder } from "../embeddings/index.js";
 import { createGenerator, type TextGenerator } from "../llm/index.js";
 import { ask, searchMemory } from "../memory/retrieve.js";
@@ -34,6 +42,7 @@ export interface ServerDeps {
   generator: TextGenerator;
   ingestQueue: Queue<IngestJob>;
   consolidateOptions: ConsolidateOptions;
+  relationshipStaleDays: number;
 }
 
 async function probe(fn: () => Promise<unknown>): Promise<boolean> {
@@ -54,6 +63,7 @@ const CreateSourceBody = z.object({
 });
 const SearchBody = z.object({ query: z.string().min(1), k: z.number().int().positive().max(50).optional() });
 const AskBody = z.object({ question: z.string().min(1), k: z.number().int().positive().max(50).optional() });
+const ConductBody = z.object({ query: z.string().min(1) });
 const RetentionBody = z.object({
   episodeId: z.string().uuid(),
   tier: z.enum(["raw_forever", "standard", "ephemeral"]).optional(),
@@ -64,7 +74,7 @@ const RetentionBody = z.object({
 
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: true });
-  const { db, store, redis, queryEmbedder, generator, ingestQueue, consolidateOptions } = deps;
+  const { db, store, redis, queryEmbedder, generator, ingestQueue, consolidateOptions, relationshipStaleDays } = deps;
 
   app.get("/health", async (_req, reply) => {
     const [database, redisOk, storage] = await Promise.all([
@@ -146,6 +156,39 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return { id: req.params.id, summary };
   });
 
+  // --- Agent mesh (Phase 3) ---
+
+  // "What's on my mind": the most salient working-memory entries right now.
+  app.get<{ Querystring: { k?: string } }>("/mind", async (req) => {
+    const k = req.query.k ? Number(req.query.k) : 10;
+    return listMind(db, k);
+  });
+
+  // Run the Nudger now (also runs on a schedule in the worker).
+  app.post("/agents/nudger/run", async () => {
+    return runNudger(db, { staleDays: relationshipStaleDays });
+  });
+
+  // Relationship health across people.
+  app.get("/people/health", async () => relationshipHealthAll(db));
+
+  // Pre-meeting briefing for a person.
+  app.get<{ Params: { id: string } }>("/people/:id/brief", async (req) => {
+    return briefEntity({ db, generator }, req.params.id);
+  });
+
+  // The Conductor: route a free-text query to the right agent.
+  app.post("/conduct", async (req) => {
+    const { query } = ConductBody.parse(req.body);
+    return route({ db, queryEmbedder, generator }, query);
+  });
+
+  // Dismiss a blackboard entry.
+  app.post<{ Params: { id: string } }>("/blackboard/:id/dismiss", async (req, reply) => {
+    await dismissBlackboard(db, req.params.id);
+    reply.code(204);
+  });
+
   // Surface validation errors as 400s; preserve other Fastify status codes.
   app.setErrorHandler((err: FastifyError, _req, reply) => {
     if (err instanceof z.ZodError) {
@@ -186,6 +229,7 @@ export function createServer(config: AppConfig): CreatedServer {
       compressAfterDays: config.RETENTION_COMPRESS_AFTER_DAYS,
       purgeAfterDays: config.RETENTION_PURGE_AFTER_DAYS,
     },
+    relationshipStaleDays: config.RELATIONSHIP_STALE_DAYS,
   };
   const app = buildServer(deps);
 

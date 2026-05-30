@@ -37,9 +37,10 @@ Project-Mnemosyne/
     ingest/                 # connector contract + filesystem connector + pipeline
     memory/                 # encode (embed-on-write) + retrieve (cited search / ask)
     consolidate/            # the "sleep" pass: dedup, alias-merge, decay, retention, forget
+    agents/                 # People, Nudger, Briefer, Conductor (the agent mesh)
     queue/                  # BullMQ queue + job-type definitions
     api/                    # Fastify server + routes
-    worker/                 # BullMQ workers: ingest, extract, consolidate, healthcheck
+    worker/                 # BullMQ workers: ingest, extract, consolidate, nudge, healthcheck
   examples/journal/         # sample notes for the filesystem connector
   test/                     # Vitest integration tests (real Postgres)
 ```
@@ -148,6 +149,34 @@ What it does, deterministically (no LLM needed), in order:
 > lexical heuristics — alias-merge can over-merge ambiguous first names, and
 > contradiction flagging can misjudge edge cases. The intended upgrade is
 > embedding/LLM-based semantic comparison. Contradiction links are advisory only.
+
+## The agent mesh (proactive layer)
+
+Agents read memory and write to a shared **blackboard** (working memory); they
+never call each other directly. The **Conductor** routes a query to the right
+agent or falls back to recall.
+
+```powershell
+# Conductor — one entry point that routes by intent (briefing / people / nudges / recall)
+curl -X POST localhost:3000/conduct -H "content-type: application/json" `
+  -d '{"query":"prep me for coffee with Sara Lin"}'
+
+curl -X POST localhost:3000/agents/nudger/run -d '{}' -H "content-type: application/json"
+curl localhost:3000/mind                       # what's on my mind (salient working memory)
+curl localhost:3000/people/health              # relationship health across people
+curl localhost:3000/people/<id>/brief          # pre-meeting briefing + suggested questions
+curl -X POST localhost:3000/blackboard/<id>/dismiss -d '{}' -H "content-type: application/json"
+```
+
+- **People** — relationship health (last contact, frequency, open threads,
+  closeness) and "going cold" alerts.
+- **Nudger** — proactively writes salient open-loops and relationship alerts to
+  the blackboard (also runs on `NUDGER_INTERVAL_MS`).
+- **Briefer** — pre-meeting briefings: identity, recent interactions, open
+  threads, recent facts, and suggested questions.
+- **Conductor** — keyword intent routing (an LLM classifier is the planned
+  upgrade). Agents coordinate only via the Conductor and the blackboard, so the
+  flow stays observable and stoppable.
 
 ## Useful scripts
 

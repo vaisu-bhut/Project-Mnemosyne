@@ -13,11 +13,13 @@ import {
   runIngest,
 } from "../ingest/pipeline.js";
 import { runConsolidation } from "../consolidate/index.js";
+import { runNudger } from "../agents/index.js";
 import {
   QUEUES,
   type ConsolidateJob,
   type ExtractJob,
   type IngestJob,
+  type NudgeJob,
 } from "../queue/index.js";
 
 const config = getConfig();
@@ -32,6 +34,7 @@ const extractor = createExtractor(config, generator);
 const connection = new Redis(config.REDIS_URL, { maxRetriesPerRequest: null });
 const extractQueue = new Queue<ExtractJob>(QUEUES.extract, { connection });
 const consolidateQueue = new Queue<ConsolidateJob>(QUEUES.consolidate, { connection });
+const nudgeQueue = new Queue<NudgeJob>(QUEUES.nudge, { connection });
 
 // --- ingest: pull a source, create episodes, fan out extraction jobs --------
 const ingestWorker = new Worker<IngestJob>(
@@ -74,6 +77,13 @@ const consolidateWorker = new Worker<ConsolidateJob>(
   { connection },
 );
 
+// --- nudge: proactive surfacing to the blackboard ---------------------------
+const nudgeWorker = new Worker<NudgeJob>(
+  QUEUES.nudge,
+  async () => runNudger(db, { staleDays: config.RELATIONSHIP_STALE_DAYS }),
+  { connection },
+);
+
 // --- healthcheck: prove wiring ----------------------------------------------
 const healthWorker = new Worker(
   QUEUES.healthcheck,
@@ -81,7 +91,7 @@ const healthWorker = new Worker(
   { connection },
 );
 
-for (const w of [ingestWorker, extractWorker, consolidateWorker, healthWorker]) {
+for (const w of [ingestWorker, extractWorker, consolidateWorker, nudgeWorker, healthWorker]) {
   w.on("ready", () => console.log(`[worker] ready: ${w.name}`));
   w.on("completed", (job, result) =>
     console.log(`[worker] ${w.name} job ${job.id} done:`, result),
@@ -103,14 +113,26 @@ if (config.CONSOLIDATE_INTERVAL_MS > 0) {
   );
 }
 
+// Run the Nudger on a repeatable schedule (0 disables it).
+if (config.NUDGER_INTERVAL_MS > 0) {
+  await nudgeQueue.upsertJobScheduler(
+    "periodic-nudger",
+    { every: config.NUDGER_INTERVAL_MS },
+    { name: "nudge" },
+  );
+  console.log(`[worker] nudger scheduled every ${config.NUDGER_INTERVAL_MS}ms`);
+}
+
 async function shutdown(): Promise<void> {
   await Promise.all([
     ingestWorker.close(),
     extractWorker.close(),
     consolidateWorker.close(),
+    nudgeWorker.close(),
     healthWorker.close(),
     extractQueue.close(),
     consolidateQueue.close(),
+    nudgeQueue.close(),
   ]);
   await db.destroy();
   connection.disconnect();

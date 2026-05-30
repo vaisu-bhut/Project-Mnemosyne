@@ -33,7 +33,7 @@ export function testDb(): Db {
 /** Wipe all domain tables between tests. */
 export async function truncateAll(db: Db): Promise<void> {
   await sql`
-    TRUNCATE sources, entities, episodes, facts, edges, open_loops, retention
+    TRUNCATE sources, entities, episodes, facts, edges, open_loops, retention, blackboard
     RESTART IDENTITY CASCADE
   `.execute(db);
 }

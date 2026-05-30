@@ -22,6 +22,7 @@ export function buildSchemaSql(vectorDim: number): string {
 
   return `
 -- Drop existing objects so this is a clean, idempotent reset.
+DROP TABLE IF EXISTS blackboard CASCADE;
 DROP TABLE IF EXISTS retention CASCADE;
 DROP TABLE IF EXISTS open_loops CASCADE;
 DROP TABLE IF EXISTS edges CASCADE;
@@ -176,6 +177,26 @@ CREATE TABLE retention (
   purge_after    interval,
   vaulted        boolean NOT NULL DEFAULT false
 );
+
+-- blackboard: shared WORKING MEMORY for the agent mesh. Agents write entries
+-- (nudges, alerts, briefings, questions); "what's on my mind" reads the most
+-- salient active ones. Observable and stoppable by design.
+CREATE TABLE blackboard (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind       text NOT NULL,
+  agent      text NOT NULL,
+  title      text NOT NULL,
+  body       text,
+  entity_id  uuid REFERENCES entities(id) ON DELETE CASCADE,
+  salience   real NOT NULL DEFAULT 0.5,
+  payload    jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status     text NOT NULL DEFAULT 'active'
+               CHECK (status IN ('active', 'dismissed', 'done')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz
+);
+CREATE INDEX blackboard_salience_idx ON blackboard (status, salience DESC);
+CREATE INDEX blackboard_entity_idx ON blackboard (entity_id);
 `;
 }
 

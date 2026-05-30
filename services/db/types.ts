@@ -107,6 +107,22 @@ export interface RetentionTable {
   vaulted: ColumnType<boolean, boolean | undefined, boolean>;
 }
 
+export type BlackboardStatus = "active" | "dismissed" | "done";
+
+export interface BlackboardTable {
+  id: Generated<string>;
+  kind: string;
+  agent: string;
+  title: string;
+  body: ColumnType<string | null, string | null | undefined, string | null>;
+  entity_id: ColumnType<string | null, string | null | undefined, string | null>;
+  salience: ColumnType<number, number | undefined, number>;
+  payload: JsonbColumn;
+  status: ColumnType<BlackboardStatus, BlackboardStatus | undefined, BlackboardStatus>;
+  created_at: Generated<Date>;
+  expires_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+}
+
 export interface Database {
   sources: SourcesTable;
   entities: EntitiesTable;
@@ -115,4 +131,5 @@ export interface Database {
   edges: EdgesTable;
   open_loops: OpenLoopsTable;
   retention: RetentionTable;
+  blackboard: BlackboardTable;
 }

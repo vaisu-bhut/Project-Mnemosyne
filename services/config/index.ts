@@ -51,6 +51,12 @@ const EnvSchema = z.object({
   // Repeatable consolidation cadence (ms). 0 disables the scheduler.
   CONSOLIDATE_INTERVAL_MS: z.coerce.number().int().min(0).default(86_400_000),
 
+  // --- Agents (Phase 3) ---
+  // No contact with a person for this many days raises a relationship alert.
+  RELATIONSHIP_STALE_DAYS: z.coerce.number().int().positive().default(30),
+  // Repeatable Nudger cadence (ms). 0 disables the scheduler.
+  NUDGER_INTERVAL_MS: z.coerce.number().int().min(0).default(0),
+
   API_HOST: z.string().default("0.0.0.0"),
   API_PORT: z.coerce.number().int().positive().default(3000),
 });
