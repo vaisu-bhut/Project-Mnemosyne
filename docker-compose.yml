@@ -1,0 +1,39 @@
+# Local development infrastructure for Project Mnemosyne.
+# Postgres (with pgvector) + Redis, each with a healthcheck so
+# `docker compose up --wait` blocks until they're ready to serve.
+# Artifacts are stored on the local filesystem (LOCAL_STORAGE_DIR), so there's
+# no object-storage container yet.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mnemosyne}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mnemosyne}
+      POSTGRES_DB: ${POSTGRES_DB:-mnemosyne}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - mnemosyne_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mnemosyne} -d ${POSTGRES_DB:-mnemosyne}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - mnemosyne_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mnemosyne_pgdata:
+  mnemosyne_redisdata:

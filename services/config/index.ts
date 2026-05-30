@@ -1,0 +1,82 @@
+import { z } from "zod";
+
+/**
+ * The embedding vector dimension. Single source of truth used by the
+ * application; the SQL migrations read the same value from the VECTOR_DIM env
+ * var. Change it here (and in .env) only while the database is still empty —
+ * existing `vector(N)` columns cannot be resized in place.
+ *
+ * Default 1024 = Qwen text-embedding-v3.
+ */
+export const DEFAULT_VECTOR_DIM = 1024;
+
+const EnvSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  TEST_DATABASE_URL: z.string().url().optional(),
+
+  VECTOR_DIM: z.coerce.number().int().positive().default(DEFAULT_VECTOR_DIM),
+
+  REDIS_URL: z.string().default("redis://localhost:6379"),
+
+  // Local directory where raw artifacts are stored. Swap for S3 later by
+  // replacing the storage module; this is the only config it needs today.
+  LOCAL_STORAGE_DIR: z.string().default("./.data/artifacts"),
+
+  // --- Embeddings ---
+  // "dev"    = deterministic local embedder (no network/secrets, used in tests)
+  // "gemini" = Google gemini-embedding-001 via the Gemini API (AI Studio key)
+  // "qwen"   = Qwen text-embedding-v3 via an OpenAI-compatible endpoint
+  EMBEDDING_PROVIDER: z.enum(["dev", "gemini", "qwen"]).default("dev"),
+  EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
+  // Optional override; each provider has a sensible default base URL.
+  EMBEDDING_BASE_URL: z.string().url().optional(),
+  EMBEDDING_API_KEY: z.string().optional(),
+  // Gemini task type hint (RETRIEVAL_DOCUMENT for stored memory,
+  // RETRIEVAL_QUERY for search queries). Improves retrieval quality.
+  EMBEDDING_TASK_TYPE: z.string().default("RETRIEVAL_DOCUMENT"),
+
+  // --- Generative LLM (extraction + grounded answers) ---
+  // "dev"    = deterministic offline stand-in (heuristics; no network).
+  // "gemini" = Gemini generateContent, reusing EMBEDDING_API_KEY (same AI Studio key).
+  LLM_PROVIDER: z.enum(["dev", "gemini"]).default("dev"),
+  LLM_MODEL: z.string().default("gemini-2.5-flash"),
+
+  // --- Consolidation ("sleep") ---
+  // A fact never reconfirmed within this many days decays to 'stale'.
+  DECAY_MAX_AGE_DAYS: z.coerce.number().int().positive().default(90),
+  // Episodes older than this get their raw body compressed away (kept in object store).
+  RETENTION_COMPRESS_AFTER_DAYS: z.coerce.number().int().positive().default(90),
+  // Episodes older than this get purged across all stores (unless raw_forever/vaulted).
+  RETENTION_PURGE_AFTER_DAYS: z.coerce.number().int().positive().default(365),
+  // Repeatable consolidation cadence (ms). 0 disables the scheduler.
+  CONSOLIDATE_INTERVAL_MS: z.coerce.number().int().min(0).default(86_400_000),
+
+  API_HOST: z.string().default("0.0.0.0"),
+  API_PORT: z.coerce.number().int().positive().default(3000),
+});
+
+export type AppConfig = Readonly<z.infer<typeof EnvSchema>>;
+
+/**
+ * Parse and validate configuration from a raw environment record.
+ * Pure: pass in `process.env` (or a fixture) and get back a frozen config.
+ * Throws a readable error if a required variable is missing or malformed.
+ */
+export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  const result = EnvSchema.safeParse(env);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
+      .join("\n");
+    throw new Error(`Invalid environment configuration:\n${issues}`);
+  }
+  return Object.freeze(result.data);
+}
+
+let cached: AppConfig | undefined;
+
+/** Lazily parse and memoize the process configuration. */
+export function getConfig(): AppConfig {
+  cached ??= parseConfig();
+  return cached;
+}
