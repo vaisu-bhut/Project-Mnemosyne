@@ -78,6 +78,7 @@ const EnvSchema = z.object({
   CALENDAR_DAYS_PAST: z.coerce.number().int().min(0).default(7),
   CALENDAR_DAYS_FUTURE: z.coerce.number().int().min(0).default(30),
   CALENDAR_MAX_EVENTS: z.coerce.number().int().positive().default(50),
+  CONTACTS_MAX_RESULTS: z.coerce.number().int().positive().default(200),
   // Look-ahead window for time-triggered pre-meeting briefings (hours).
   BRIEFING_LOOKAHEAD_HOURS: z.coerce.number().int().positive().default(24),
 

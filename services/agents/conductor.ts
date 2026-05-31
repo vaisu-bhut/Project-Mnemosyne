@@ -11,6 +11,8 @@ export interface ConductorDeps {
   db: Db;
   queryEmbedder: Embedder;
   generator: TextGenerator;
+  /** Key to decrypt sensitive-tier episode bodies at rest (optional). */
+  encKey?: string;
 }
 
 export type Intent = "recall" | "briefing" | "people" | "nudges";
@@ -61,7 +63,12 @@ export async function route(
   ctx: AccessContext = {},
 ): Promise<RouteResult> {
   const intent = classify(query);
-  const askDeps = { db: deps.db, embedder: deps.queryEmbedder, generator: deps.generator };
+  const askDeps = {
+    db: deps.db,
+    embedder: deps.queryEmbedder,
+    generator: deps.generator,
+    encKey: deps.encKey,
+  };
 
   if (intent === "nudges") {
     return { intent, via: "blackboard", result: await listMind(deps.db, userId, 10) };

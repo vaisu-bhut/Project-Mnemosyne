@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createSource, upsertEntity, type Source } from "../services/db/index.js";
 import { createEmbedder, createQueryEmbedder } from "../services/embeddings/index.js";
-import { recordEpisode, recordFact } from "../services/memory/encode.js";
+import { recordEntity, recordEpisode, recordFact } from "../services/memory/encode.js";
 import { searchMemory } from "../services/memory/retrieve.js";
 import { devConfig, seedUser, testDb, truncateAll } from "./helpers.js";
 
@@ -73,5 +73,29 @@ describe("Guardian — privacy compartments", () => {
   it("default mode can opt out of sensitive sources", async () => {
     const ids = await visibleSources({ includeSensitive: false });
     expect(ids).toEqual(new Set([personal.id, work.id]));
+  });
+
+  it("external mode shares only sources scoped 'shareable'", async () => {
+    const shareable = await sourceWithFact({ displayName: "Public", scope: "shareable", sensitive: false });
+    const ids = await visibleSources({ mode: "external" });
+    expect(ids).toEqual(new Set([shareable.id]));
+  });
+
+  it("masks entities whose only provenance is a hidden source", async () => {
+    const priv = await recordEntity({ db, embedder }, { userId, type: "person", canonicalName: "PrivatePerson", embedText: QUERY });
+    const ep = await recordEpisode(
+      { db, embedder },
+      { userId, occurredAt: new Date(), sourceId: health.id, externalId: "h2", kind: "note", body: "b", embedText: QUERY },
+    );
+    await recordFact(
+      { db, embedder },
+      { userId, subjectId: priv.id, statement: "private fact", sourceEpisode: ep.id, sourceId: health.id, embedText: QUERY },
+    );
+
+    const def = await searchMemory({ db, embedder: queryEmbedder }, userId, QUERY, 10, {});
+    expect(def.entities.some((e) => e.id === priv.id)).toBe(true);
+
+    const guest = await searchMemory({ db, embedder: queryEmbedder }, userId, QUERY, 10, { mode: "guest" });
+    expect(guest.entities.some((e) => e.id === priv.id)).toBe(false);
   });
 });

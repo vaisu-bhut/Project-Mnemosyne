@@ -133,10 +133,11 @@ strong identity alias) linked to each email, bodies are cleaned (HTML→text,
 quoted replies/signatures stripped), and attachments are stored to the artifact
 store. A revoked/expired token flags the source `needsReauth`.
 
-A **Calendar** source (`kind: "gcal"`, same Google login) reuses the same seam:
-events sync incrementally (Calendar `syncToken`, 410 → window resync), and
-attendees become linked person entities. That powers **time-triggered
-pre-meeting briefings** — the worker's proactive pass writes a briefing to the
+A **Calendar** source (`kind: "gcal"`) and a **Contacts** source
+(`kind: "gcontacts"`, People API — seeds the People graph identity layer with
+email/phone aliases) reuse the same seam. Calendar events sync incrementally
+(Calendar `syncToken`, 410 → window resync), and attendees become linked person
+entities. That powers **time-triggered pre-meeting briefings** — the worker's proactive pass writes a briefing to the
 blackboard for each attendee of an upcoming event, and `GET /briefings/upcoming`
 returns them on demand:
 
@@ -247,7 +248,15 @@ given context, enforced at retrieval (facts + episodes, which carry `source_id`)
 
 - **guest** — hides every sensitive source (a visitor sees only safe context).
 - **work** — firewalls everything not scoped `work` (no personal/health leakage).
+- **external** — the consent layer: denies everything except sources the user
+  explicitly scoped `shareable` (third-party content never leaves by default).
 - **default** — shows all, unless `includeSensitive: false`.
+
+Gating applies to facts, episodes, **and entities** (a person known *only* from a
+hidden source disappears in that context). The **sensitive tier is encrypted at
+rest** (AES-256-GCM): bodies and raw payloads of `sensitive` sources are
+ciphertext in Postgres/object-storage and decrypted only on authorized read.
+(Field-level encryption of facts and device-held keys remain future work.)
 
 ```powershell
 curl localhost:3000/sources -H "authorization: Bearer <t>"          # list + classify

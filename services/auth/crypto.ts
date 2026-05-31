@@ -35,3 +35,8 @@ export function decryptToken(payload: string, secret: string): string {
 export function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
+
+// Generic aliases: the same AES-256-GCM primitive encrypts the sensitive tier
+// (episode bodies, raw artifacts) at rest, not just OAuth tokens.
+export const encryptText = encryptToken;
+export const decryptText = decryptToken;

@@ -1,11 +1,14 @@
 import { sql } from "kysely";
 import { clearAgentEntries, writeBlackboard, type Db } from "../db/index.js";
 import type { TextGenerator } from "../llm/index.js";
+import { decryptText } from "../auth/crypto.js";
 import { relationshipHealth, type OpenThread } from "./people.js";
 
 export interface BrieferDeps {
   db: Db;
   generator: TextGenerator;
+  /** Key to decrypt sensitive-tier episode bodies at rest (optional). */
+  encKey?: string;
 }
 
 export interface BriefInteraction {
@@ -64,17 +67,33 @@ export async function briefEntity(
 
   const health = await relationshipHealth(db, userId, entityId, now);
 
-  const interactions = await sql<{ id: string; title: string | null; occurred_at: Date; body: string | null }>`
-    SELECT DISTINCT ON (ep.id) ep.id, ep.title, ep.occurred_at, ep.body
+  const interactions = await sql<{
+    id: string;
+    title: string | null;
+    occurred_at: Date;
+    body: string | null;
+    meta: Record<string, unknown>;
+  }>`
+    SELECT DISTINCT ON (ep.id) ep.id, ep.title, ep.occurred_at, ep.body, ep.meta
     FROM edges e
     JOIN episodes ep ON ep.id = e.dst_id
     WHERE e.user_id = ${userId} AND e.src_id = ${entityId} AND e.rel = 'mentioned_in'
     ORDER BY ep.id, ep.occurred_at DESC
   `.execute(db);
+  const readBody = (body: string | null, meta: Record<string, unknown>): string | null => {
+    if (body == null) return null;
+    if (meta.encrypted !== true) return body;
+    if (!deps.encKey) return null;
+    try {
+      return decryptText(body, deps.encKey);
+    } catch {
+      return null;
+    }
+  };
   const recentInteractions = interactions.rows
     .sort((a, b) => b.occurred_at.getTime() - a.occurred_at.getTime())
     .slice(0, 3)
-    .map((r) => ({ episodeId: r.id, title: r.title, occurredAt: r.occurred_at, snippet: snippet(r.body) }));
+    .map((r) => ({ episodeId: r.id, title: r.title, occurredAt: r.occurred_at, snippet: snippet(readBody(r.body, r.meta)) }));
 
   const facts = await db
     .selectFrom("facts")

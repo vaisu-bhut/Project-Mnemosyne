@@ -10,6 +10,7 @@ import { createGenerator } from "../services/llm/index.js";
 import { createFilesystemConnector } from "../services/ingest/filesystem.js";
 import { runExtraction, runIngest } from "../services/ingest/pipeline.js";
 import type { Connector } from "../services/ingest/connector.js";
+import { searchMemory } from "../services/memory/retrieve.js";
 import { createArtifactStore } from "../services/storage/index.js";
 import { devConfig, seedUser, testDb, truncateAll } from "./helpers.js";
 
@@ -139,5 +140,47 @@ describe("ingest + extraction pipeline", () => {
       .where("id", "=", source.id)
       .executeTakeFirstOrThrow();
     expect((updated.config as { cursor?: string }).cursor).toBe("hist-1");
+  });
+
+  it("encrypts the sensitive tier at rest and decrypts on authorized read", async () => {
+    const store = createArtifactStore({ LOCAL_STORAGE_DIR: storeDir });
+    const source = await createSource(db, { userId, kind: "gmail", displayName: "Gmail", sensitive: true });
+    const secret = "SECRET-BODY-TEXT-12345";
+    const stub: Connector = {
+      name: "stub",
+      async pull() {
+        return {
+          items: [
+            {
+              externalId: "s1",
+              occurredAt: new Date(),
+              kind: "email",
+              title: "Secret",
+              body: secret,
+              raw: Buffer.from("{}"),
+              contentType: "application/json",
+            },
+          ],
+        };
+      },
+    };
+
+    await runIngest({ db, store, embedder, encKey: "test-enc-key" }, source, stub);
+
+    // At rest the body is ciphertext, flagged encrypted.
+    const row = await db
+      .selectFrom("episodes")
+      .select(["body", "meta"])
+      .where("source_id", "=", source.id)
+      .executeTakeFirstOrThrow();
+    expect(row.body).not.toContain(secret);
+    expect((row.meta as { encrypted?: boolean }).encrypted).toBe(true);
+
+    // With the key, retrieval decrypts; without it, the body is withheld.
+    const withKey = await searchMemory({ db, embedder, encKey: "test-enc-key" }, userId, secret, 5);
+    expect(withKey.episodes[0]?.snippet).toContain(secret);
+
+    const noKey = await searchMemory({ db, embedder }, userId, secret, 5);
+    expect(noKey.episodes[0]?.snippet).toBeNull();
   });
 });

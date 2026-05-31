@@ -5,11 +5,14 @@
  * creation, participant linking, and extraction.
  */
 
-/** A person involved in an item (e.g. an email sender/recipient). */
+/** A person involved in an item (e.g. an email sender/recipient, a contact). */
 export interface Participant {
   email?: string;
+  phone?: string;
   name?: string;
   role: "from" | "to" | "cc" | "other";
+  /** Extra attributes to merge onto the resolved entity (org, title, ...). */
+  attrs?: Record<string, unknown>;
 }
 
 /** A binary attachment carried by an item. */

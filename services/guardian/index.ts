@@ -6,7 +6,7 @@ import { listSources, type Db } from "../db/index.js";
  * rule and work/guest modes. v1 gates *retrieval* (facts + episodes, which carry
  * source_id); action-level vetoes arrive with the Drafter.
  */
-export type Mode = "default" | "work" | "guest";
+export type Mode = "default" | "work" | "guest" | "external";
 
 export interface AccessContext {
   mode?: Mode;
@@ -22,9 +22,13 @@ export interface Visibility {
 
 /**
  * Resolve which of a user's sources are off-limits for this context:
- *   - guest:   hide every sensitive source (a visitor sees only safe context).
- *   - work:    firewall everything not scoped 'work' (no personal/health leakage).
- *   - default: show all, unless includeSensitive === false.
+ *   - guest:    hide every sensitive source (a visitor sees only safe context).
+ *   - work:     firewall everything not scoped 'work' (no personal/health leakage).
+ *   - external: the consent layer — deny everything by default; only sources the
+ *               user explicitly scoped 'shareable' may leave the system. Ingested
+ *               third-party content (a friend's email) is non-shareable unless
+ *               opted in.
+ *   - default:  show all, unless includeSensitive === false.
  */
 export async function resolveVisibility(
   db: Db,
@@ -38,6 +42,7 @@ export async function resolveVisibility(
     .filter((s) => {
       if (mode === "guest") return s.sensitive;
       if (mode === "work") return s.scope !== "work";
+      if (mode === "external") return s.scope !== "shareable";
       return ctx.includeSensitive === false ? s.sensitive : false;
     })
     .map((s) => s.id);

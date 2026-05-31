@@ -67,18 +67,35 @@ export async function searchFactsByVector(
   return res.rows;
 }
 
-/** Cosine KNN over entity embeddings (user-scoped). */
+/**
+ * Cosine KNN over entity embeddings (user-scoped, Guardian-filtered). An entity
+ * is visible only if it has provenance in a non-hidden source — a fact about it,
+ * or an edge to an episode from a visible source. So a person known *only* from
+ * a hidden (e.g. sensitive) source disappears in that context.
+ */
 export async function searchEntitiesByVector(
   db: Db,
   userId: string,
   embedding: number[],
   k: number,
+  opts: SearchOptions = {},
 ): Promise<WithDistance<Entity>[]> {
   const vec = toVector(embedding);
+  const excluded = opts.excludeSourceIds;
+  const visibility =
+    excluded && excluded.length
+      ? sql`AND (
+          EXISTS (SELECT 1 FROM facts f
+                  WHERE f.subject_id = entities.id AND f.source_id <> ALL(${excluded}::uuid[]))
+          OR EXISTS (SELECT 1 FROM edges e JOIN episodes ep ON ep.id = e.dst_id
+                     WHERE e.src_id = entities.id AND ep.source_id <> ALL(${excluded}::uuid[]))
+        )`
+      : sql``;
   const res = await sql<WithDistance<Entity>>`
     SELECT *, embedding <=> ${vec}::vector AS distance
     FROM entities
     WHERE user_id = ${userId} AND embedding IS NOT NULL
+      ${visibility}
     ORDER BY embedding <=> ${vec}::vector
     LIMIT ${k}
   `.execute(db);

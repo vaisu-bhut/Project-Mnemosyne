@@ -6,6 +6,7 @@ import {
   type Source,
 } from "../db/index.js";
 import type { AppConfig } from "../config/index.js";
+import { encryptText } from "../auth/crypto.js";
 import type { Embedder } from "../embeddings/index.js";
 import type { Extractor, EntityType } from "../extract/index.js";
 import { recordEntity, recordEpisode, recordFact } from "../memory/encode.js";
@@ -16,6 +17,8 @@ export interface IngestDeps {
   db: Db;
   store: ArtifactStore;
   embedder: Embedder;
+  /** When set, encrypt the sensitive tier (sensitive sources) at rest. */
+  encKey?: string;
 }
 
 export interface IngestSummary {
@@ -49,18 +52,27 @@ async function linkParticipants(
   for (const p of participants) {
     const name = participantName(p);
     if (!name) continue;
-    const key = (p.email ?? name).toLowerCase();
+    const key = (p.email ?? p.phone ?? name).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
+
+    // Email + phone are strong identity aliases (so the same person always
+    // resolves to one entity across emails, events, and contacts).
+    const aliases = [p.email, p.phone].filter((a): a is string => Boolean(a));
+    const attrs = {
+      ...(p.email ? { email: p.email } : {}),
+      ...(p.phone ? { phone: p.phone } : {}),
+      ...(p.attrs ?? {}),
+    };
 
     const entity = await recordEntity(
       { db: deps.db, embedder: deps.embedder },
       {
         userId,
         type: "person",
-        canonicalName: p.name?.trim() || p.email!,
-        aliases: p.email ? [p.email] : [],
-        attrs: p.email ? { email: p.email } : {},
+        canonicalName: p.name?.trim() || p.email || p.phone!,
+        aliases,
+        attrs,
       },
     );
     await insertEdge(deps.db, {
@@ -94,22 +106,32 @@ export async function runIngest(
   const cursor = typeof priorConfig.cursor === "string" ? priorConfig.cursor : null;
   const { items, cursor: nextCursor } = await connector.pull({ cursor });
 
+  // Sensitive-tier encryption: encrypt raw payloads + episode bodies at rest.
+  const encrypt = source.sensitive && deps.encKey ? deps.encKey : null;
+
   const episodeIds: string[] = [];
   for (const item of items) {
     const key = artifactKey(source, item.externalId);
-    await deps.store.putArtifact(key, item.raw, item.contentType);
+    const rawToStore = encrypt
+      ? Buffer.from(encryptText(item.raw.toString("base64"), encrypt))
+      : item.raw;
+    await deps.store.putArtifact(key, rawToStore, item.contentType);
 
     // Persist attachments to the object store; reference them on the episode.
     const attachmentKeys: { key: string; filename: string; contentType: string }[] = [];
     for (const att of item.attachments ?? []) {
       const attKey = `${key}/att/${att.filename}`;
-      await deps.store.putArtifact(attKey, att.data, att.contentType);
+      const attData = encrypt
+        ? Buffer.from(encryptText(att.data.toString("base64"), encrypt))
+        : att.data;
+      await deps.store.putArtifact(attKey, attData, att.contentType);
       attachmentKeys.push({ key: attKey, filename: att.filename, contentType: att.contentType });
     }
 
     const meta = {
       ...(item.meta ?? {}),
       ...(attachmentKeys.length ? { attachments: attachmentKeys } : {}),
+      ...(encrypt ? { encrypted: true } : {}),
     };
 
     const episode = await recordEpisode(
@@ -121,7 +143,9 @@ export async function runIngest(
         externalId: item.externalId,
         kind: item.kind,
         title: item.title ?? null,
-        body: item.body,
+        // Embed from plaintext; store ciphertext when the source is sensitive.
+        body: encrypt ? encryptText(item.body, encrypt) : item.body,
+        embedText: encrypt ? item.body : undefined,
         artifactUri: key,
         meta,
       },
@@ -264,7 +288,7 @@ export async function connectorForSource(
     return createFilesystemConnector({ dir });
   }
 
-  if (source.kind === "gmail" || source.kind === "gcal") {
+  if (source.kind === "gmail" || source.kind === "gcal" || source.kind === "gcontacts") {
     // Use the owner's Google tokens (refreshed if needed).
     const { getValidGoogleAccessToken } = await import("../auth/google.js");
     const accessToken = await getValidGoogleAccessToken(
@@ -278,6 +302,13 @@ export async function connectorForSource(
         accessToken,
         query: deps.config.GMAIL_QUERY,
         maxMessages: deps.config.GMAIL_MAX_MESSAGES,
+      });
+    }
+    if (source.kind === "gcontacts") {
+      const { createContactsConnector } = await import("./gcontacts.js");
+      return createContactsConnector({
+        accessToken,
+        maxContacts: deps.config.CONTACTS_MAX_RESULTS,
       });
     }
     const { createCalendarConnector } = await import("./gcal.js");

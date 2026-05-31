@@ -117,6 +117,7 @@ function isPublicPath(path: string): boolean {
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: true });
   const { db, store, redis, config, queryEmbedder, generator, ingestQueue, consolidateOptions, relationshipStaleDays } = deps;
+  const encKey = config.TOKEN_ENC_KEY;
 
   // Authentication guard: populate req.user from the Bearer token; reject
   // protected routes without a valid one. Every handler below is user-scoped.
@@ -181,13 +182,13 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   // Cited hybrid search over the caller's memory (Guardian-filtered by mode).
   app.post("/search", async (req) => {
     const { query, k, ...mode } = SearchBody.parse(req.body);
-    return searchMemory({ db, embedder: queryEmbedder }, req.user!.id, query, k, accessContext(mode));
+    return searchMemory({ db, embedder: queryEmbedder, encKey }, req.user!.id, query, k, accessContext(mode));
   });
 
   // Grounded question answering with citations (Guardian-filtered by mode).
   app.post("/ask", async (req) => {
     const { question, k, ...mode } = AskBody.parse(req.body);
-    return ask({ db, embedder: queryEmbedder, generator }, req.user!.id, question, k, accessContext(mode));
+    return ask({ db, embedder: queryEmbedder, generator, encKey }, req.user!.id, question, k, accessContext(mode));
   });
 
   // Open Loops dashboard.
@@ -239,19 +240,19 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   // Pre-meeting briefing for a person.
   app.get<{ Params: { id: string } }>("/people/:id/brief", async (req) => {
-    return briefEntity({ db, generator }, req.user!.id, req.params.id);
+    return briefEntity({ db, generator, encKey }, req.user!.id, req.params.id);
   });
 
   // Time-triggered pre-meeting briefings for upcoming calendar events.
   app.get<{ Querystring: { hours?: string } }>("/briefings/upcoming", async (req) => {
     const withinHours = req.query.hours ? Number(req.query.hours) : 24;
-    return upcomingBriefings({ db, generator }, req.user!.id, { withinHours });
+    return upcomingBriefings({ db, generator, encKey }, req.user!.id, { withinHours });
   });
 
   // The Conductor: route a free-text query to the right agent.
   app.post("/conduct", async (req) => {
     const { query, ...mode } = ConductBody.parse(req.body);
-    return route({ db, queryEmbedder, generator }, req.user!.id, query, accessContext(mode));
+    return route({ db, queryEmbedder, generator, encKey }, req.user!.id, query, accessContext(mode));
   });
 
   // Dismiss a blackboard entry.

@@ -48,11 +48,15 @@ const ingestWorker = new Worker<IngestJob>(
     let summary;
     try {
       const connector = await connectorForSource(source, { db, config });
-      summary = await runIngest({ db, store, embedder }, source, connector);
+      summary = await runIngest(
+        { db, store, embedder, encKey: config.TOKEN_ENC_KEY },
+        source,
+        connector,
+      );
     } catch (err) {
       // OAuth-backed sources can lose access (revoked/expired). Flag the source
       // so the user can re-connect, and fail the job for retry/visibility.
-      if (source.kind === "gmail" || source.kind === "gcal") {
+      if (source.kind === "gmail" || source.kind === "gcal" || source.kind === "gcontacts") {
         await updateSourceConfig(db, source.id, {
           ...(source.config as Record<string, unknown>),
           needsReauth: true,
@@ -98,7 +102,7 @@ const nudgeWorker = new Worker<NudgeJob>(
     const userIds = job.data.userId ? [job.data.userId] : await listUserIds(db);
     for (const userId of userIds) {
       await runNudger(db, userId, { staleDays: config.RELATIONSHIP_STALE_DAYS });
-      await upcomingBriefings({ db, generator }, userId, {
+      await upcomingBriefings({ db, generator, encKey: config.TOKEN_ENC_KEY }, userId, {
         withinHours: config.BRIEFING_LOOKAHEAD_HOURS,
         post: true,
       });
