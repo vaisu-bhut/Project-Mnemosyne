@@ -29,17 +29,18 @@ Project-Mnemosyne/
   .env.example
   services/
     config/                 # env loading (Zod) + the VECTOR_DIM constant
+    auth/                    # password (scrypt), JWT (jose), token crypto, Google OAuth
     storage/                # local-filesystem artifact store (S3-shaped API)
     embeddings/             # text -> vector (dev / Gemini / Qwen)
     llm/                    # text generation (dev / Gemini) for extract + answers
     db/                     # schema.ts, Kysely types, client, repositories
     extract/                # entities / facts / open-loops extraction (dev / Gemini)
-    ingest/                 # connector contract + filesystem connector + pipeline
+    ingest/                 # connector contract + filesystem + gmail connectors + pipeline
     memory/                 # encode (embed-on-write) + retrieve (cited search / ask)
     consolidate/            # the "sleep" pass: dedup, alias-merge, decay, retention, forget
     agents/                 # People, Nudger, Briefer, Conductor (the agent mesh)
     queue/                  # BullMQ queue + job-type definitions
-    api/                    # Fastify server + routes
+    api/                    # Fastify server + routes (JWT-guarded)
     worker/                 # BullMQ workers: ingest, extract, consolidate, nudge, healthcheck
   examples/journal/         # sample notes for the filesystem connector
   test/                     # Vitest integration tests (real Postgres)
@@ -48,6 +49,11 @@ Project-Mnemosyne/
 The database schema lives in `services/db/schema.ts` as one declarative file.
 While there's no data to preserve, `pnpm db:reset` drops and recreates it — edit
 the file, re-run. (Reintroduce a migration tool once there's real data.)
+
+**Multi-tenant.** Every memory row carries `user_id`; a user owns their entire
+graph and nothing crosses the boundary. All repositories, agents, search, and
+consolidation are user-scoped, and every API route (except `/health` and
+`/auth/*`) requires a valid access token.
 
 ## Prerequisites
 
@@ -87,26 +93,59 @@ pnpm worker   # BullMQ workers: ingest, extract, healthcheck
 `GET /health` returns the reachability of Postgres, Redis, and the artifact
 store, with HTTP 200 when all three are up and 503 otherwise.
 
+## Authentication
+
+Mobile-style auth: a short-lived **JWT access token** (sent as
+`Authorization: Bearer <token>`) plus a **rotating refresh token** (opaque,
+only its hash is stored; rotated on every `/auth/refresh`). Passwords are
+hashed with scrypt.
+
+```powershell
+# Register (or POST /auth/login) -> { user, accessToken, refreshToken }
+curl -X POST localhost:3000/auth/register -H "content-type: application/json" `
+  -d '{"email":"me@example.com","password":"password123"}'
+
+# Use the access token on every protected route.
+curl localhost:3000/auth/me -H "authorization: Bearer <accessToken>"
+
+# Rotate when the access token expires.
+curl -X POST localhost:3000/auth/refresh -H "content-type: application/json" `
+  -d '{"refreshToken":"<refreshToken>"}'
+```
+
+**Google sign-in + Gmail** (requires `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`):
+`GET /auth/google/url` returns a consent URL; after the user approves,
+`GET /auth/google/callback` upserts the account (encrypting the Gmail tokens at
+rest) and returns the same `{ accessToken, refreshToken }` pair. The user can
+then register a `gmail` source and ingest real mail:
+
+```powershell
+curl -X POST localhost:3000/sources -H "authorization: Bearer <t>" `
+  -H "content-type: application/json" -d '{"kind":"gmail","displayName":"Gmail"}'
+curl -X POST localhost:3000/sources/<id>/ingest -H "authorization: Bearer <t>" -d '{}'
+```
+
 ## The memory pipeline (ingest → extract → retrieve)
 
-With both `pnpm api` and `pnpm worker` running:
+With both `pnpm api` and `pnpm worker` running (all routes need `-H "authorization: Bearer <token>"`):
 
 ```powershell
 # 1. Register a filesystem source pointing at a folder of notes.
 #    (examples/journal has sample notes.)
 curl -X POST localhost:3000/sources -H "content-type: application/json" `
+  -H "authorization: Bearer <t>" `
   -d '{"kind":"filesystem","displayName":"Journal","config":{"dir":"C:/path/to/examples/journal"}}'
 
 # 2. Ingest it (enqueues a job; the worker embeds episodes + extracts memory).
-curl -X POST localhost:3000/sources/<id>/ingest -H "content-type: application/json" -d '{}'
+curl -X POST localhost:3000/sources/<id>/ingest -H "authorization: Bearer <t>" -d '{}'
 
 # 3. Ask a grounded question — answer cites the source episode.
-curl -X POST localhost:3000/ask -H "content-type: application/json" `
+curl -X POST localhost:3000/ask -H "content-type: application/json" -H "authorization: Bearer <t>" `
   -d '{"question":"What is going on with Sara''s dad?"}'
 
 # 4. Cited semantic search, and the open-loops dashboard.
-curl -X POST localhost:3000/search -H "content-type: application/json" -d '{"query":"iceland book"}'
-curl localhost:3000/open-loops
+curl -X POST localhost:3000/search -H "content-type: application/json" -H "authorization: Bearer <t>" -d '{"query":"iceland book"}'
+curl localhost:3000/open-loops -H "authorization: Bearer <t>"
 ```
 
 **Providers.** Extraction and answering use `LLM_PROVIDER` (`dev` = offline

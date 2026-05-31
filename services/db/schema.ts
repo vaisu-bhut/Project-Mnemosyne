@@ -31,12 +31,52 @@ DROP TABLE IF EXISTS episodes CASCADE;
 DROP FUNCTION IF EXISTS create_episodes_partition(date);
 DROP TABLE IF EXISTS entities CASCADE;
 DROP TABLE IF EXISTS sources CASCADE;
+DROP TABLE IF EXISTS sessions CASCADE;
+DROP TABLE IF EXISTS oauth_accounts CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- sources: a connector (gmail, calendar, ...)
+-- users: the owner of everything. Every memory row carries user_id; a user
+-- owns their entire graph, and nothing crosses the boundary.
+CREATE TABLE users (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  email         text UNIQUE NOT NULL,
+  password_hash text,             -- null for OAuth-only accounts
+  display_name  text,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+-- oauth_accounts: linked external identities + tokens (encrypted at rest).
+CREATE TABLE oauth_accounts (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id             uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider            text NOT NULL,
+  provider_account_id text NOT NULL,
+  access_token        text,   -- AES-256-GCM ciphertext
+  refresh_token       text,   -- AES-256-GCM ciphertext
+  expires_at          timestamptz,
+  scope               text,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (provider, provider_account_id)
+);
+CREATE INDEX oauth_accounts_user_idx ON oauth_accounts (user_id, provider);
+
+-- sessions: refresh tokens (only their SHA-256 hash is stored). Rotated on use.
+CREATE TABLE sessions (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash text UNIQUE NOT NULL,
+  expires_at timestamptz NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX sessions_user_idx ON sessions (user_id);
+
+-- sources: a connector (gmail, calendar, ...) owned by a user.
 CREATE TABLE sources (
   id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   kind         text NOT NULL,
   display_name text NOT NULL,
   scope        text NOT NULL DEFAULT 'personal',
@@ -44,10 +84,12 @@ CREATE TABLE sources (
   config       jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at   timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX sources_user_idx ON sources (user_id);
 
 -- entities: graph nodes (person/place/org/project)
 CREATE TABLE entities (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   type           text NOT NULL,
   canonical_name text NOT NULL,
   aliases        text[] NOT NULL DEFAULT '{}',
@@ -57,7 +99,7 @@ CREATE TABLE entities (
   created_at     timestamptz NOT NULL DEFAULT now(),
   updated_at     timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX entities_type_idx ON entities (type);
+CREATE INDEX entities_user_type_idx ON entities (user_id, type);
 CREATE INDEX entities_aliases_gin ON entities USING gin (aliases);
 CREATE INDEX entities_embedding_hnsw ON entities USING hnsw (embedding vector_cosine_ops);
 
@@ -67,6 +109,7 @@ CREATE INDEX entities_embedding_hnsw ON entities USING hnsw (embedding vector_co
 -- (source_id, external_id, occurred_at).
 CREATE TABLE episodes (
   id           uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   occurred_at  timestamptz NOT NULL,
   source_id    uuid NOT NULL REFERENCES sources(id),
   external_id  text,
@@ -82,6 +125,7 @@ CREATE TABLE episodes (
 
 CREATE UNIQUE INDEX episodes_source_external_uidx
   ON episodes (source_id, external_id, occurred_at);
+CREATE INDEX episodes_user_idx ON episodes (user_id);
 CREATE INDEX episodes_embedding_hnsw ON episodes USING hnsw (embedding vector_cosine_ops);
 
 -- Helper: create a monthly partition (idempotent). Callable to roll forward.
@@ -121,6 +165,7 @@ CREATE TABLE episodes_default PARTITION OF episodes DEFAULT;
 -- facts: semantic memory with mandatory provenance + trust
 CREATE TABLE facts (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   subject_id     uuid NOT NULL REFERENCES entities(id),
   statement      text NOT NULL,
   predicate      text,
@@ -136,8 +181,8 @@ CREATE TABLE facts (
                    CHECK (status IN ('active', 'stale', 'retracted')),
   embedding      vector(${vectorDim})
 );
-CREATE INDEX facts_subject_idx ON facts (subject_id);
-CREATE INDEX facts_status_idx ON facts (status);
+CREATE INDEX facts_user_subject_idx ON facts (user_id, subject_id);
+CREATE INDEX facts_user_status_idx ON facts (user_id, status);
 CREATE INDEX facts_embedding_hnsw ON facts USING hnsw (embedding vector_cosine_ops);
 
 -- edges: canonical graph (entity<->entity / entity<->episode).
@@ -145,18 +190,20 @@ CREATE INDEX facts_embedding_hnsw ON facts USING hnsw (embedding vector_cosine_o
 -- partitioned episodes table).
 CREATE TABLE edges (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   src_id     uuid NOT NULL,
   dst_id     uuid NOT NULL,
   rel        text NOT NULL,
   props      jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX edges_src_rel_idx ON edges (src_id, rel);
-CREATE INDEX edges_dst_rel_idx ON edges (dst_id, rel);
+CREATE INDEX edges_src_rel_idx ON edges (user_id, src_id, rel);
+CREATE INDEX edges_dst_rel_idx ON edges (user_id, dst_id, rel);
 
 -- open_loops: prospective memory / promises
 CREATE TABLE open_loops (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   description    text NOT NULL,
   counterparty   uuid REFERENCES entities(id),
   direction      text NOT NULL CHECK (direction IN ('i_owe', 'they_owe')),
@@ -166,23 +213,27 @@ CREATE TABLE open_loops (
                    CHECK (status IN ('open', 'done', 'rotted')),
   created_at     timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX open_loops_user_idx ON open_loops (user_id, status);
 
 -- retention: tiered forgetting policy (episode_id is a bare uuid PK, not a FK,
 -- for the same partitioned-PK reason as edges).
 CREATE TABLE retention (
   episode_id     uuid PRIMARY KEY,
+  user_id        uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   tier           text NOT NULL DEFAULT 'standard'
                    CHECK (tier IN ('raw_forever', 'standard', 'ephemeral')),
   compress_after interval,
   purge_after    interval,
   vaulted        boolean NOT NULL DEFAULT false
 );
+CREATE INDEX retention_user_idx ON retention (user_id);
 
 -- blackboard: shared WORKING MEMORY for the agent mesh. Agents write entries
 -- (nudges, alerts, briefings, questions); "what's on my mind" reads the most
 -- salient active ones. Observable and stoppable by design.
 CREATE TABLE blackboard (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   kind       text NOT NULL,
   agent      text NOT NULL,
   title      text NOT NULL,
@@ -195,7 +246,7 @@ CREATE TABLE blackboard (
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz
 );
-CREATE INDEX blackboard_salience_idx ON blackboard (status, salience DESC);
+CREATE INDEX blackboard_salience_idx ON blackboard (user_id, status, salience DESC);
 CREATE INDEX blackboard_entity_idx ON blackboard (entity_id);
 `;
 }

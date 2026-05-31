@@ -13,17 +13,20 @@ export interface SummarizeDeps {
  */
 export async function summarizeEntity(
   deps: SummarizeDeps,
+  userId: string,
   entityId: string,
 ): Promise<string | null> {
   const entity = await deps.db
     .selectFrom("entities")
     .select(["id", "canonical_name", "attrs"])
     .where("id", "=", entityId)
+    .where("user_id", "=", userId)
     .executeTakeFirstOrThrow();
 
   const facts = await deps.db
     .selectFrom("facts")
     .select(["statement"])
+    .where("user_id", "=", userId)
     .where("subject_id", "=", entityId)
     .where("status", "=", "active")
     .orderBy("reinforced", "desc")
@@ -57,20 +60,22 @@ export async function summarizeEntity(
   return summary;
 }
 
-/** Summarize every entity that has at least one active fact. */
+/** Summarize every entity (for a user) that has at least one active fact. */
 export async function summarizeAllEntities(
   deps: SummarizeDeps,
+  userId: string,
 ): Promise<{ summarized: number }> {
   const ids = await deps.db
     .selectFrom("facts")
     .select("subject_id")
+    .where("user_id", "=", userId)
     .where("status", "=", "active")
     .distinct()
     .execute();
 
   let summarized = 0;
   for (const { subject_id } of ids) {
-    const s = await summarizeEntity(deps, subject_id);
+    const s = await summarizeEntity(deps, userId, subject_id);
     if (s) summarized++;
   }
   return { summarized };

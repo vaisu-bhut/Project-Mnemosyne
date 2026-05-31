@@ -6,6 +6,7 @@ import { toVector } from "../vector.js";
 export type Fact = Selectable<FactsTable>;
 
 export interface InsertFactInput {
+  userId: string;
   subjectId: string;
   statement: string;
   predicate?: string | null;
@@ -34,6 +35,7 @@ export async function insertFact(db: Db, input: InsertFactInput): Promise<Fact> 
   return db
     .insertInto("facts")
     .values({
+      user_id: input.userId,
       subject_id: input.subjectId,
       statement: input.statement,
       predicate: input.predicate ?? null,

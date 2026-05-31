@@ -59,14 +59,15 @@ function snippet(body: string | null, max = 200): string | null {
  */
 export async function searchMemory(
   deps: SearchDeps,
+  userId: string,
   query: string,
   k = 5,
 ): Promise<SearchResult> {
   const qv = await deps.embedder.embedOne(query);
   const [facts, episodes, entities] = await Promise.all([
-    searchFactsByVector(deps.db, qv, k),
-    searchEpisodesByVector(deps.db, qv, k),
-    searchEntitiesByVector(deps.db, qv, k),
+    searchFactsByVector(deps.db, userId, qv, k),
+    searchEpisodesByVector(deps.db, userId, qv, k),
+    searchEntitiesByVector(deps.db, userId, qv, k),
   ]);
 
   return {
@@ -109,8 +110,13 @@ export interface Answer {
  * model is constrained to the supplied context and told to cite episode ids;
  * the dev path returns the cited facts directly (no hallucination surface).
  */
-export async function ask(deps: AskDeps, question: string, k = 5): Promise<Answer> {
-  const result = await searchMemory(deps, question, k);
+export async function ask(
+  deps: AskDeps,
+  userId: string,
+  question: string,
+  k = 5,
+): Promise<Answer> {
+  const result = await searchMemory(deps, userId, question, k);
   const facts = result.facts;
   const episodes = result.episodes;
   const citations: Citation[] = [

@@ -20,6 +20,7 @@ export interface DecayResult {
  */
 export async function decayFacts(
   db: Db,
+  userId: string,
   opts: DecayOptions = {},
 ): Promise<DecayResult> {
   const maxAgeDays = opts.maxAgeDays ?? 90;
@@ -29,6 +30,7 @@ export async function decayFacts(
   const res = await db
     .updateTable("facts")
     .set({ status: "stale" })
+    .where("user_id", "=", userId)
     .where("status", "=", "active")
     .where("last_confirmed", "is", null)
     .where("reinforced", "<", minReinforced)

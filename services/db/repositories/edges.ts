@@ -6,6 +6,7 @@ export type Edge = Selectable<EdgesTable>;
 type Entity = Selectable<EntitiesTable>;
 
 export interface InsertEdgeInput {
+  userId: string;
   srcId: string;
   dstId: string;
   rel: string;
@@ -17,6 +18,7 @@ export async function insertEdge(db: Db, input: InsertEdgeInput): Promise<Edge> 
   return db
     .insertInto("edges")
     .values({
+      user_id: input.userId,
       src_id: input.srcId,
       dst_id: input.dstId,
       rel: input.rel,
@@ -45,6 +47,7 @@ export interface Neighbor {
  */
 export async function getNeighbors(
   db: Db,
+  userId: string,
   entityId: string,
   rel?: string,
   depth = 1,
@@ -66,6 +69,7 @@ export async function getNeighbors(
         ARRAY[e.src_id, e.dst_id] AS path
       FROM edges e
       WHERE e.src_id = ${entityId}
+        AND e.user_id = ${userId}
         AND (${relFilter}::text IS NULL OR e.rel = ${relFilter})
       UNION ALL
       SELECT
@@ -76,6 +80,7 @@ export async function getNeighbors(
       FROM edges e
       JOIN walk w ON e.src_id = w.node_id
       WHERE w.depth < ${maxDepth}
+        AND e.user_id = ${userId}
         AND (${relFilter}::text IS NULL OR e.rel = ${relFilter})
         AND NOT (e.dst_id = ANY(w.path))
     ),

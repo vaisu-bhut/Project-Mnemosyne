@@ -6,6 +6,7 @@ import { toVector } from "../vector.js";
 export type Episode = Selectable<EpisodesTable>;
 
 export interface InsertEpisodeInput {
+  userId: string;
   occurredAt: Date;
   sourceId: string;
   externalId?: string | null;
@@ -33,6 +34,7 @@ export async function insertEpisode(
   const inserted = await db
     .insertInto("episodes")
     .values({
+      user_id: input.userId,
       occurred_at: input.occurredAt,
       source_id: input.sourceId,
       external_id: input.externalId ?? null,

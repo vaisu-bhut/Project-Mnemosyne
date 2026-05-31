@@ -6,6 +6,7 @@ import { toVector } from "../vector.js";
 export type Entity = Selectable<EntitiesTable>;
 
 export interface UpsertEntityInput {
+  userId: string;
   type: string;
   canonicalName: string;
   aliases?: string[];
@@ -34,7 +35,8 @@ export async function upsertEntity(
     const found = await sql<Entity>`
       SELECT *
       FROM entities
-      WHERE type = ${input.type}
+      WHERE user_id = ${input.userId}
+        AND type = ${input.type}
         AND (canonical_name = ANY(${names}) OR aliases && ${names})
       ORDER BY created_at ASC
       LIMIT 1
@@ -66,6 +68,7 @@ export async function upsertEntity(
     return trx
       .insertInto("entities")
       .values({
+        user_id: input.userId,
         type: input.type,
         canonical_name: input.canonicalName,
         aliases: input.aliases ?? [],

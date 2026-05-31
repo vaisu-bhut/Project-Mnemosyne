@@ -15,16 +15,26 @@ export interface SetRetentionInput {
   vaulted?: boolean;
 }
 
-/** Upsert a per-episode retention policy. */
+/** Upsert a per-episode retention policy (verifies the episode is the user's). */
 export async function setRetention(
   db: Db,
+  userId: string,
   episodeId: string,
   input: SetRetentionInput,
 ): Promise<void> {
+  const owned = await db
+    .selectFrom("episodes")
+    .select("id")
+    .where("id", "=", episodeId)
+    .where("user_id", "=", userId)
+    .executeTakeFirst();
+  if (!owned) throw new Error("episode not found for this user");
+
   await db
     .insertInto("retention")
     .values({
       episode_id: episodeId,
+      user_id: userId,
       tier: input.tier,
       compress_after: input.compressAfter ?? null,
       purge_after: input.purgeAfter ?? null,
@@ -56,6 +66,7 @@ export interface ForgetResult {
  */
 export async function forgetEpisode(
   deps: RetentionDeps,
+  userId: string,
   episodeId: string,
 ): Promise<ForgetResult> {
   const { db, store } = deps;
@@ -64,20 +75,34 @@ export async function forgetEpisode(
     .selectFrom("episodes")
     .select(["id", "artifact_uri"])
     .where("id", "=", episodeId)
+    .where("user_id", "=", userId)
     .executeTakeFirst();
   if (!episode) {
     return { episode: 0, facts: 0, edges: 0, openLoops: 0, artifactDeleted: false };
   }
 
   const counts = await db.transaction().execute(async (trx) => {
-    const f = await trx.deleteFrom("facts").where("source_episode", "=", episodeId).executeTakeFirst();
+    const f = await trx
+      .deleteFrom("facts")
+      .where("user_id", "=", userId)
+      .where("source_episode", "=", episodeId)
+      .executeTakeFirst();
     const e = await trx
       .deleteFrom("edges")
+      .where("user_id", "=", userId)
       .where((eb) => eb.or([eb("src_id", "=", episodeId), eb("dst_id", "=", episodeId)]))
       .executeTakeFirst();
-    const l = await trx.deleteFrom("open_loops").where("source_episode", "=", episodeId).executeTakeFirst();
+    const l = await trx
+      .deleteFrom("open_loops")
+      .where("user_id", "=", userId)
+      .where("source_episode", "=", episodeId)
+      .executeTakeFirst();
     await trx.deleteFrom("retention").where("episode_id", "=", episodeId).execute();
-    await trx.deleteFrom("episodes").where("id", "=", episodeId).execute();
+    await trx
+      .deleteFrom("episodes")
+      .where("id", "=", episodeId)
+      .where("user_id", "=", userId)
+      .execute();
     return {
       facts: Number(f.numDeletedRows ?? 0n),
       edges: Number(e.numDeletedRows ?? 0n),
@@ -115,6 +140,7 @@ export interface EnforceRetentionResult {
  */
 export async function enforceRetention(
   deps: RetentionDeps,
+  userId: string,
   opts: EnforceRetentionOptions = {},
 ): Promise<EnforceRetentionResult> {
   const { db } = deps;
@@ -127,13 +153,14 @@ export async function enforceRetention(
     SELECT e.id
     FROM episodes e
     LEFT JOIN retention r ON r.episode_id = e.id
-    WHERE COALESCE(r.tier, 'standard') <> 'raw_forever'
+    WHERE e.user_id = ${userId}
+      AND COALESCE(r.tier, 'standard') <> 'raw_forever'
       AND NOT COALESCE(r.vaulted, false)
       AND e.occurred_at < ${now}::timestamptz
         - COALESCE(r.purge_after, (${purgeDays} || ' days')::interval)
   `.execute(db);
 
-  for (const { id } of toPurge.rows) await forgetEpisode(deps, id);
+  for (const { id } of toPurge.rows) await forgetEpisode(deps, userId, id);
 
   const compressed = await sql<{ id: string }>`
     WITH c AS (
@@ -144,6 +171,7 @@ export async function enforceRetention(
              e.occurred_at
       FROM episodes e
       LEFT JOIN retention r ON r.episode_id = e.id
+      WHERE e.user_id = ${userId}
     )
     UPDATE episodes e
     SET body = NULL, meta = e.meta || '{"compressed":true}'::jsonb

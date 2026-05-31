@@ -10,7 +10,7 @@ import { createGenerator } from "../services/llm/index.js";
 import { createFilesystemConnector } from "../services/ingest/filesystem.js";
 import { runExtraction, runIngest } from "../services/ingest/pipeline.js";
 import { createArtifactStore } from "../services/storage/index.js";
-import { devConfig, testDb, truncateAll } from "./helpers.js";
+import { devConfig, seedUser, testDb, truncateAll } from "./helpers.js";
 
 const db = testDb();
 const embedder = createEmbedder(devConfig);
@@ -32,7 +32,11 @@ beforeAll(async () => {
   );
 });
 
-beforeEach(() => truncateAll(db));
+let userId: string;
+beforeEach(async () => {
+  await truncateAll(db);
+  userId = await seedUser(db);
+});
 afterAll(async () => {
   await db.destroy();
   await rm(notesDir, { recursive: true, force: true });
@@ -43,6 +47,7 @@ describe("ingest + extraction pipeline", () => {
   it("ingests notes into embedded episodes, then extracts with provenance", async () => {
     const store = createArtifactStore({ LOCAL_STORAGE_DIR: storeDir });
     const source = await createSource(db, {
+      userId,
       kind: "filesystem",
       displayName: "Journal",
       config: { dir: notesDir },

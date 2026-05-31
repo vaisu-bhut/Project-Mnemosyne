@@ -57,6 +57,24 @@ const EnvSchema = z.object({
   // Repeatable Nudger cadence (ms). 0 disables the scheduler.
   NUDGER_INTERVAL_MS: z.coerce.number().int().min(0).default(0),
 
+  // --- Auth (mobile: JWT access + rotating refresh token) ---
+  JWT_SECRET: z.string().default("dev-insecure-jwt-secret-change-me"),
+  ACCESS_TOKEN_TTL: z.string().default("15m"),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  // Key material for encrypting stored OAuth tokens at rest (AES-256-GCM).
+  TOKEN_ENC_KEY: z.string().default("dev-insecure-token-encryption-key"),
+  APP_BASE_URL: z.string().url().default("http://localhost:3000"),
+
+  // --- Google OAuth + Gmail (create an OAuth client in Google Cloud Console) ---
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REDIRECT_URI: z
+    .string()
+    .url()
+    .default("http://localhost:3000/auth/google/callback"),
+  GMAIL_MAX_MESSAGES: z.coerce.number().int().positive().default(25),
+  GMAIL_QUERY: z.string().default("newer_than:30d"),
+
   API_HOST: z.string().default("0.0.0.0"),
   API_PORT: z.coerce.number().int().positive().default(3000),
 });

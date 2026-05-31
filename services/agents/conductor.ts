@@ -32,51 +32,68 @@ function classify(query: string): Intent {
   return "recall";
 }
 
-async function findEntityByName(db: Db, name: string): Promise<{ id: string } | undefined> {
+async function findEntityByName(
+  db: Db,
+  userId: string,
+  name: string,
+): Promise<{ id: string } | undefined> {
   const res = await sql<{ id: string }>`
     SELECT id FROM entities
-    WHERE lower(canonical_name) = lower(${name})
-       OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE lower(a) = lower(${name}))
+    WHERE user_id = ${userId}
+      AND (lower(canonical_name) = lower(${name})
+           OR EXISTS (SELECT 1 FROM unnest(aliases) a WHERE lower(a) = lower(${name})))
     LIMIT 1
   `.execute(db);
   return res.rows[0];
 }
 
 /**
- * The Conductor: route a query to the right agent (or fall back to recall).
- * A deliberately simple keyword router for now — a drop-in LLM classifier is
- * the obvious upgrade. Agents never call each other directly; the Conductor and
- * the blackboard are the only coordination points.
+ * The Conductor: route a user's query to the right agent (or fall back to
+ * recall). A deliberately simple keyword router for now — a drop-in LLM
+ * classifier is the obvious upgrade. Agents never call each other directly; the
+ * Conductor and the blackboard are the only coordination points.
  */
-export async function route(deps: ConductorDeps, query: string): Promise<RouteResult> {
+export async function route(
+  deps: ConductorDeps,
+  userId: string,
+  query: string,
+): Promise<RouteResult> {
   const intent = classify(query);
 
   if (intent === "nudges") {
-    return { intent, via: "blackboard", result: await listMind(deps.db, 10) };
+    return { intent, via: "blackboard", result: await listMind(deps.db, userId, 10) };
   }
 
   if (intent === "people") {
-    return { intent, via: "people", result: await relationshipAlerts(deps.db) };
+    return { intent, via: "people", result: await relationshipAlerts(deps.db, userId) };
   }
 
   if (intent === "briefing") {
     for (const name of query.match(PROPER_NOUN) ?? []) {
-      const entity = await findEntityByName(deps.db, name);
+      const entity = await findEntityByName(deps.db, userId, name);
       if (entity) {
-        return { intent, via: "briefer", result: await briefEntity(deps, entity.id) };
+        return { intent, via: "briefer", result: await briefEntity(deps, userId, entity.id) };
       }
     }
     // No known person named — fall back to recall.
     return {
       intent: "recall",
       via: "fallback",
-      result: await ask({ db: deps.db, embedder: deps.queryEmbedder, generator: deps.generator }, query),
+      result: await ask(
+        { db: deps.db, embedder: deps.queryEmbedder, generator: deps.generator },
+        userId,
+        query,
+      ),
     };
   }
 
   return {
     intent: "recall",
     via: "librarian",
-    result: await ask({ db: deps.db, embedder: deps.queryEmbedder, generator: deps.generator }, query),
+    result: await ask(
+      { db: deps.db, embedder: deps.queryEmbedder, generator: deps.generator },
+      userId,
+      query,
+    ),
   };
 }

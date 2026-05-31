@@ -37,9 +37,10 @@ function daysSince(date: Date | null, now: Date): number | null {
   return Math.floor((now.getTime() - date.getTime()) / DAY_MS);
 }
 
-/** Relationship health for one person: contact recency, frequency, open threads. */
+/** Relationship health for one of a user's people. */
 export async function relationshipHealth(
   db: Db,
+  userId: string,
   entityId: string,
   now = new Date(),
 ): Promise<RelationshipHealth> {
@@ -47,19 +48,21 @@ export async function relationshipHealth(
     .selectFrom("entities")
     .select(["id", "canonical_name", "closeness"])
     .where("id", "=", entityId)
+    .where("user_id", "=", userId)
     .executeTakeFirstOrThrow();
 
   const contact = await sql<{ interactions: number; last_contact: Date | null }>`
     SELECT COUNT(DISTINCT ep.id)::int AS interactions, MAX(ep.occurred_at) AS last_contact
     FROM edges e
     JOIN episodes ep ON ep.id = e.dst_id
-    WHERE e.src_id = ${entityId} AND e.rel = 'mentioned_in'
+    WHERE e.user_id = ${userId} AND e.src_id = ${entityId} AND e.rel = 'mentioned_in'
   `.execute(db);
   const row = contact.rows[0] ?? { interactions: 0, last_contact: null };
 
   const loops = await db
     .selectFrom("open_loops")
     .select(["id", "description", "direction"])
+    .where("user_id", "=", userId)
     .where("counterparty", "=", entityId)
     .where("status", "=", "open")
     .execute();
@@ -75,9 +78,10 @@ export async function relationshipHealth(
   };
 }
 
-/** Relationship health across all people (no open-thread detail; for scans). */
+/** Relationship health across a user's people (no open-thread detail; for scans). */
 export async function relationshipHealthAll(
   db: Db,
+  userId: string,
   now = new Date(),
 ): Promise<RelationshipHealth[]> {
   const rows = await sql<HealthRow>`
@@ -85,9 +89,9 @@ export async function relationshipHealthAll(
            COUNT(DISTINCT ep.id)::int AS interactions,
            MAX(ep.occurred_at) AS last_contact
     FROM entities en
-    LEFT JOIN edges e ON e.src_id = en.id AND e.rel = 'mentioned_in'
+    LEFT JOIN edges e ON e.src_id = en.id AND e.rel = 'mentioned_in' AND e.user_id = ${userId}
     LEFT JOIN episodes ep ON ep.id = e.dst_id
-    WHERE en.type = 'person'
+    WHERE en.user_id = ${userId} AND en.type = 'person'
     GROUP BY en.id, en.canonical_name, en.closeness
     ORDER BY last_contact DESC NULLS LAST
   `.execute(db);
@@ -116,22 +120,23 @@ export interface RelationshipAlert {
  */
 export async function relationshipAlerts(
   db: Db,
+  userId: string,
   opts: { staleDays?: number; now?: Date; post?: boolean } = {},
 ): Promise<RelationshipAlert[]> {
   const staleDays = opts.staleDays ?? 30;
   const now = opts.now ?? new Date();
 
-  const health = await relationshipHealthAll(db, now);
+  const health = await relationshipHealthAll(db, userId, now);
   const alerts = health
     .filter((h) => h.interactions >= 1 && h.daysSinceContact !== null && h.daysSinceContact > staleDays)
     .map((h) => ({ entityId: h.entityId, name: h.name, daysSinceContact: h.daysSinceContact! }))
     .sort((a, b) => b.daysSinceContact - a.daysSinceContact);
 
   if (opts.post) {
-    // Self-idempotent: replace prior alerts rather than piling up.
-    await clearAgentEntries(db, "people");
+    await clearAgentEntries(db, userId, "people");
     for (const a of alerts) {
       await writeBlackboard(db, {
+        userId,
         kind: "alert",
         agent: "people",
         title: `You haven't connected with ${a.name} in ${a.daysSinceContact} days`,
@@ -150,6 +155,7 @@ export async function relationshipAlerts(
  */
 export async function recomputeCloseness(
   db: Db,
+  userId: string,
   now = new Date(),
 ): Promise<{ updated: number }> {
   const res = await sql<{ id: string }>`
@@ -158,9 +164,9 @@ export async function recomputeCloseness(
              COUNT(DISTINCT ep.id)::real AS interactions,
              MAX(ep.occurred_at) AS last_contact
       FROM entities en
-      LEFT JOIN edges e ON e.src_id = en.id AND e.rel = 'mentioned_in'
+      LEFT JOIN edges e ON e.src_id = en.id AND e.rel = 'mentioned_in' AND e.user_id = ${userId}
       LEFT JOIN episodes ep ON ep.id = e.dst_id
-      WHERE en.type = 'person'
+      WHERE en.user_id = ${userId} AND en.type = 'person'
       GROUP BY en.id
     )
     UPDATE entities en
@@ -175,7 +181,7 @@ export async function recomputeCloseness(
 }
 
 /** Convenience: open loops the user owes (for surfacing). */
-export async function listOwedThreads(db: Db) {
-  const loops = await listOpenLoops(db, "open");
+export async function listOwedThreads(db: Db, userId: string) {
+  const loops = await listOpenLoops(db, userId, "open");
   return loops.filter((l) => l.direction === "i_owe");
 }

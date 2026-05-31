@@ -4,6 +4,7 @@ import {
   type Db,
   type Source,
 } from "../db/index.js";
+import type { AppConfig } from "../config/index.js";
 import type { Embedder } from "../embeddings/index.js";
 import type { Extractor, EntityType } from "../extract/index.js";
 import { recordEntity, recordEpisode, recordFact } from "../memory/encode.js";
@@ -52,6 +53,7 @@ export async function runIngest(
     const episode = await recordEpisode(
       { db: deps.db, embedder: deps.embedder },
       {
+        userId: source.user_id,
         occurredAt: item.occurredAt,
         sourceId: source.id,
         externalId: item.externalId,
@@ -92,9 +94,11 @@ export async function runExtraction(
 ): Promise<ExtractSummary> {
   const episode = await deps.db
     .selectFrom("episodes")
-    .select(["id", "source_id", "title", "body"])
+    .select(["id", "user_id", "source_id", "title", "body"])
     .where("id", "=", episodeId)
     .executeTakeFirstOrThrow();
+
+  const userId = episode.user_id;
 
   const result = await deps.extractor.extract({
     title: episode.title,
@@ -111,7 +115,7 @@ export async function runExtraction(
     if (existing) return existing;
     const entity = await recordEntity(
       { db: deps.db, embedder: deps.embedder },
-      { type: typeOf.get(name) ?? "person", canonicalName: name },
+      { userId, type: typeOf.get(name) ?? "person", canonicalName: name },
     );
     idByName.set(name, entity.id);
     return entity.id;
@@ -126,6 +130,7 @@ export async function runExtraction(
     await recordFact(
       { db: deps.db, embedder: deps.embedder },
       {
+        userId,
         subjectId,
         statement: f.statement,
         predicate: f.predicate ?? null,
@@ -141,6 +146,7 @@ export async function runExtraction(
   // Link every mentioned entity to this episode.
   for (const entityId of new Set(idByName.values())) {
     await insertEdge(deps.db, {
+      userId,
       srcId: entityId,
       dstId: episode.id,
       rel: "mentioned_in",
@@ -152,6 +158,7 @@ export async function runExtraction(
       ? await ensureEntity(loop.counterparty)
       : null;
     await createOpenLoop(deps.db, {
+      userId,
       description: loop.description,
       direction: loop.direction,
       counterparty,
@@ -167,8 +174,16 @@ export async function runExtraction(
   };
 }
 
-/** Build the connector for a source from its stored config. */
-export async function connectorForSource(source: Source): Promise<Connector> {
+export interface ConnectorDeps {
+  db: Db;
+  config: AppConfig;
+}
+
+/** Build the connector for a source from its kind + stored config. */
+export async function connectorForSource(
+  source: Source,
+  deps: ConnectorDeps,
+): Promise<Connector> {
   if (source.kind === "filesystem") {
     const dir = (source.config as { dir?: unknown }).dir;
     if (typeof dir !== "string") {
@@ -177,5 +192,22 @@ export async function connectorForSource(source: Source): Promise<Connector> {
     const { createFilesystemConnector } = await import("./filesystem.js");
     return createFilesystemConnector({ dir });
   }
+
+  if (source.kind === "gmail") {
+    // Use the owner's Google tokens (refreshed if needed) to read Gmail.
+    const { getValidGoogleAccessToken } = await import("../auth/google.js");
+    const accessToken = await getValidGoogleAccessToken(
+      deps.db,
+      deps.config,
+      source.user_id,
+    );
+    const { createGmailConnector } = await import("./gmail.js");
+    return createGmailConnector({
+      accessToken,
+      query: deps.config.GMAIL_QUERY,
+      maxMessages: deps.config.GMAIL_MAX_MESSAGES,
+    });
+  }
+
   throw new Error(`No connector for source kind "${source.kind}"`);
 }

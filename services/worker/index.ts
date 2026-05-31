@@ -2,7 +2,7 @@ import "dotenv/config";
 import { Queue, Worker } from "bullmq";
 import { Redis } from "ioredis";
 import { getConfig } from "../config/index.js";
-import { createDb } from "../db/index.js";
+import { createDb, listUserIds } from "../db/index.js";
 import { createEmbedder } from "../embeddings/index.js";
 import { createExtractor } from "../extract/index.js";
 import { createGenerator } from "../llm/index.js";
@@ -45,7 +45,7 @@ const ingestWorker = new Worker<IngestJob>(
       .selectAll()
       .where("id", "=", job.data.sourceId)
       .executeTakeFirstOrThrow();
-    const connector = await connectorForSource(source);
+    const connector = await connectorForSource(source, { db, config });
     const summary = await runIngest({ db, store, embedder }, source, connector);
     for (const episodeId of summary.episodeIds) {
       await extractQueue.add("extract", { episodeId, sourceId: source.id });
@@ -62,25 +62,32 @@ const extractWorker = new Worker<ExtractJob>(
   { connection },
 );
 
-// --- consolidate: the "sleep" pass ------------------------------------------
+// --- consolidate: the "sleep" pass, run per user ----------------------------
 const consolidateWorker = new Worker<ConsolidateJob>(
   QUEUES.consolidate,
-  async () =>
-    runConsolidation(
-      { db, store },
-      {
-        decayMaxAgeDays: config.DECAY_MAX_AGE_DAYS,
-        compressAfterDays: config.RETENTION_COMPRESS_AFTER_DAYS,
-        purgeAfterDays: config.RETENTION_PURGE_AFTER_DAYS,
-      },
-    ),
+  async (job) => {
+    const userIds = job.data.userId ? [job.data.userId] : await listUserIds(db);
+    const opts = {
+      decayMaxAgeDays: config.DECAY_MAX_AGE_DAYS,
+      compressAfterDays: config.RETENTION_COMPRESS_AFTER_DAYS,
+      purgeAfterDays: config.RETENTION_PURGE_AFTER_DAYS,
+    };
+    for (const userId of userIds) await runConsolidation({ db, store }, userId, opts);
+    return { users: userIds.length };
+  },
   { connection },
 );
 
-// --- nudge: proactive surfacing to the blackboard ---------------------------
+// --- nudge: proactive surfacing to the blackboard, per user -----------------
 const nudgeWorker = new Worker<NudgeJob>(
   QUEUES.nudge,
-  async () => runNudger(db, { staleDays: config.RELATIONSHIP_STALE_DAYS }),
+  async (job) => {
+    const userIds = job.data.userId ? [job.data.userId] : await listUserIds(db);
+    for (const userId of userIds) {
+      await runNudger(db, userId, { staleDays: config.RELATIONSHIP_STALE_DAYS });
+    }
+    return { users: userIds.length };
+  },
   { connection },
 );
 

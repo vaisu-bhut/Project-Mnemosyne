@@ -18,13 +18,17 @@ import {
   route,
   runNudger,
 } from "../services/agents/index.js";
-import { devConfig, testDb, truncateAll } from "./helpers.js";
+import { devConfig, seedUser, testDb, truncateAll } from "./helpers.js";
 
 const db = testDb();
 const queryEmbedder = createQueryEmbedder(devConfig);
 const generator = createGenerator(devConfig);
 
-beforeEach(() => truncateAll(db));
+let userId: string;
+beforeEach(async () => {
+  await truncateAll(db);
+  userId = await seedUser(db);
+});
 afterAll(() => db.destroy());
 
 function daysAgo(n: number): Date {
@@ -33,9 +37,10 @@ function daysAgo(n: number): Date {
 
 /** Person entity with `n` interactions, the most recent `recentDays` ago. */
 async function person(source: Source, name: string, n: number, recentDays: number) {
-  const e = await upsertEntity(db, { type: "person", canonicalName: name });
+  const e = await upsertEntity(db, { userId, type: "person", canonicalName: name });
   for (let i = 0; i < n; i++) {
     const ep = await insertEpisode(db, {
+      userId,
       occurredAt: daysAgo(recentDays + i * 7),
       sourceId: source.id,
       externalId: `${name}-${i}`,
@@ -43,22 +48,22 @@ async function person(source: Source, name: string, n: number, recentDays: numbe
       title: `note ${i}`,
       body: `talked with ${name}`,
     });
-    await insertEdge(db, { srcId: e.id, dstId: ep.id, rel: "mentioned_in" });
+    await insertEdge(db, { userId, srcId: e.id, dstId: ep.id, rel: "mentioned_in" });
   }
   return e;
 }
 
 describe("People agent", () => {
   it("computes relationship health and flags stale contacts", async () => {
-    const source = await createSource(db, { kind: "test", displayName: "t" });
+    const source = await createSource(db, { userId, kind: "test", displayName: "t" });
     const recent = await person(source, "Recent Rita", 2, 2);
     const stale = await person(source, "Stale Sam", 3, 60);
 
-    const ritaHealth = await relationshipHealth(db, recent.id);
+    const ritaHealth = await relationshipHealth(db, userId, recent.id);
     expect(ritaHealth.interactions).toBe(2);
     expect(ritaHealth.daysSinceContact).toBeLessThan(10);
 
-    const alerts = await relationshipAlerts(db, { staleDays: 30 });
+    const alerts = await relationshipAlerts(db, userId, { staleDays: 30 });
     expect(alerts.map((a) => a.entityId)).toContain(stale.id);
     expect(alerts.map((a) => a.entityId)).not.toContain(recent.id);
   });
@@ -66,34 +71,33 @@ describe("People agent", () => {
 
 describe("Nudger", () => {
   it("writes salient open-loop and relationship entries to the blackboard", async () => {
-    const source = await createSource(db, { kind: "test", displayName: "t" });
+    const source = await createSource(db, { userId, kind: "test", displayName: "t" });
     const stale = await person(source, "Cold Casey", 2, 90);
-    await createOpenLoop(db, { description: "send Casey the deck", direction: "i_owe", counterparty: stale.id });
+    await createOpenLoop(db, { userId, description: "send Casey the deck", direction: "i_owe", counterparty: stale.id });
 
-    const r = await runNudger(db, { staleDays: 30 });
+    const r = await runNudger(db, userId, { staleDays: 30 });
     expect(r.openLoopNudges).toBe(1);
     expect(r.relationshipAlerts).toBe(1);
 
-    const mind = await listMind(db, 10);
+    const mind = await listMind(db, userId, 10);
     expect(mind.length).toBe(2);
-    // Both an open-loop nudge and a relationship alert are surfaced.
     expect(new Set(mind.map((m) => m.kind))).toEqual(new Set(["nudge", "alert"]));
 
     // Idempotent: re-running replaces, doesn't pile up.
-    await runNudger(db, { staleDays: 30 });
-    expect((await listMind(db, 10)).length).toBe(2);
+    await runNudger(db, userId, { staleDays: 30 });
+    expect((await listMind(db, userId, 10)).length).toBe(2);
   });
 });
 
 describe("Briefer", () => {
   it("assembles a briefing with interactions, threads, and suggested questions", async () => {
-    const source = await createSource(db, { kind: "test", displayName: "t" });
+    const source = await createSource(db, { userId, kind: "test", displayName: "t" });
     const sara = await person(source, "Sara Lin", 2, 5);
-    const ep = await insertEpisode(db, { occurredAt: daysAgo(5), sourceId: source.id, externalId: "fct", kind: "note" });
-    await insertFact(db, { subjectId: sara.id, statement: "Sara is training for a marathon.", sourceEpisode: ep.id, sourceId: source.id });
-    await createOpenLoop(db, { description: "send Sara the PT name", direction: "i_owe", counterparty: sara.id });
+    const ep = await insertEpisode(db, { userId, occurredAt: daysAgo(5), sourceId: source.id, externalId: "fct", kind: "note" });
+    await insertFact(db, { userId, subjectId: sara.id, statement: "Sara is training for a marathon.", sourceEpisode: ep.id, sourceId: source.id });
+    await createOpenLoop(db, { userId, description: "send Sara the PT name", direction: "i_owe", counterparty: sara.id });
 
-    const brief = await briefEntity({ db, generator }, sara.id);
+    const brief = await briefEntity({ db, generator }, userId, sara.id);
     expect(brief.name).toBe("Sara Lin");
     expect(brief.interactions).toBeGreaterThanOrEqual(2);
     expect(brief.recentFacts.some((f) => f.statement.includes("marathon"))).toBe(true);
@@ -104,18 +108,18 @@ describe("Briefer", () => {
 
 describe("Conductor", () => {
   it("routes by intent", async () => {
-    const source = await createSource(db, { kind: "test", displayName: "t" });
+    const source = await createSource(db, { userId, kind: "test", displayName: "t" });
     const sara = await person(source, "Sara Lin", 1, 100);
-    await createOpenLoop(db, { description: "x", direction: "i_owe", counterparty: sara.id });
+    await createOpenLoop(db, { userId, description: "x", direction: "i_owe", counterparty: sara.id });
 
-    expect((await route({ db, queryEmbedder, generator }, "prep me for my meeting with Sara Lin")).intent).toBe("briefing");
-    expect((await route({ db, queryEmbedder, generator }, "who have I lost touch with?")).intent).toBe("people");
-    expect((await route({ db, queryEmbedder, generator }, "what's on my mind?")).intent).toBe("nudges");
-    expect((await route({ db, queryEmbedder, generator }, "what did Sara say about Iceland?")).intent).toBe("recall");
+    expect((await route({ db, queryEmbedder, generator }, userId, "prep me for my meeting with Sara Lin")).intent).toBe("briefing");
+    expect((await route({ db, queryEmbedder, generator }, userId, "who have I lost touch with?")).intent).toBe("people");
+    expect((await route({ db, queryEmbedder, generator }, userId, "what's on my mind?")).intent).toBe("nudges");
+    expect((await route({ db, queryEmbedder, generator }, userId, "what did Sara say about Iceland?")).intent).toBe("recall");
   });
 
   it("falls back to recall when briefing names an unknown person", async () => {
-    const r = await route({ db, queryEmbedder, generator }, "brief me on Zxqq Nobody");
+    const r = await route({ db, queryEmbedder, generator }, userId, "brief me on Zxqq Nobody");
     expect(r.intent).toBe("recall");
     expect(r.via).toBe("fallback");
   });

@@ -26,6 +26,7 @@ export interface ContradictionResult {
  */
 export async function detectContradictions(
   db: Db,
+  userId: string,
   opts: ContradictionOptions = {},
 ): Promise<ContradictionResult> {
   const ignore = new Set(opts.ignorePredicates ?? ["mentioned"]);
@@ -33,6 +34,7 @@ export async function detectContradictions(
   const facts = await db
     .selectFrom("facts")
     .select(["id", "subject_id", "predicate", "statement", "learned_at", "contradicts"])
+    .where("user_id", "=", userId)
     .where("status", "=", "active")
     .where("predicate", "is not", null)
     .execute();
@@ -78,8 +80,8 @@ export async function detectContradictions(
   return { linked };
 }
 
-/** Facts currently flagged as contradicting another, with both statements. */
-export async function listContradictions(db: Db) {
+/** A user's facts currently flagged as contradicting another. */
+export async function listContradictions(db: Db, userId: string) {
   return db
     .selectFrom("facts as f")
     .innerJoin("facts as c", "c.id", "f.contradicts")
@@ -90,5 +92,6 @@ export async function listContradictions(db: Db) {
       "c.id as contradictsId",
       "c.statement as contradictsStatement",
     ])
+    .where("f.user_id", "=", userId)
     .execute();
 }

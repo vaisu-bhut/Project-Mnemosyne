@@ -26,13 +26,14 @@ export interface NudgerResult {
  */
 export async function runNudger(
   db: Db,
+  userId: string,
   opts: NudgerOptions = {},
 ): Promise<NudgerResult> {
   const now = opts.now ?? new Date();
-  await clearAgentEntries(db, "nudger");
+  await clearAgentEntries(db, userId, "nudger");
 
   // Open loops — promises that may rot.
-  const loops = await listOpenLoops(db, "open");
+  const loops = await listOpenLoops(db, userId, "open");
   for (const loop of loops) {
     let salience = loop.direction === "i_owe" ? 0.7 : 0.55;
     let due = "";
@@ -47,6 +48,7 @@ export async function runNudger(
       }
     }
     await writeBlackboard(db, {
+      userId,
       kind: "nudge",
       agent: "nudger",
       title: `${loop.direction === "i_owe" ? "You owe" : "Owed to you"}: ${loop.description}${due}`,
@@ -57,7 +59,7 @@ export async function runNudger(
   }
 
   // Relationship alerts — connections going cold.
-  const alerts = await relationshipAlerts(db, { staleDays: opts.staleDays, now, post: true });
+  const alerts = await relationshipAlerts(db, userId, { staleDays: opts.staleDays, now, post: true });
 
   return {
     openLoopNudges: loops.length,

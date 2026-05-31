@@ -26,8 +26,41 @@ export type LoopDirection = "i_owe" | "they_owe";
 export type LoopStatus = "open" | "done" | "rotted";
 export type RetentionTier = "raw_forever" | "standard" | "ephemeral";
 
+type NullableText = ColumnType<string | null, string | null | undefined, string | null>;
+type NullableDate = ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+
+export interface UsersTable {
+  id: Generated<string>;
+  email: string;
+  password_hash: NullableText;
+  display_name: NullableText;
+  created_at: Generated<Date>;
+}
+
+export interface OauthAccountsTable {
+  id: Generated<string>;
+  user_id: string;
+  provider: string;
+  provider_account_id: string;
+  access_token: NullableText;
+  refresh_token: NullableText;
+  expires_at: NullableDate;
+  scope: NullableText;
+  created_at: Generated<Date>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+}
+
+export interface SessionsTable {
+  id: Generated<string>;
+  user_id: string;
+  token_hash: string;
+  expires_at: Timestamp;
+  created_at: Generated<Date>;
+}
+
 export interface SourcesTable {
   id: Generated<string>;
+  user_id: string;
   kind: string;
   display_name: string;
   scope: ColumnType<string, string | undefined, string>;
@@ -38,6 +71,7 @@ export interface SourcesTable {
 
 export interface EntitiesTable {
   id: Generated<string>;
+  user_id: string;
   type: string;
   canonical_name: string;
   aliases: TextArrayColumn;
@@ -50,37 +84,40 @@ export interface EntitiesTable {
 
 export interface EpisodesTable {
   id: Generated<string>;
+  user_id: string;
   occurred_at: Timestamp;
   source_id: string;
-  external_id: ColumnType<string | null, string | null | undefined, string | null>;
+  external_id: NullableText;
   kind: string;
-  title: ColumnType<string | null, string | null | undefined, string | null>;
-  body: ColumnType<string | null, string | null | undefined, string | null>;
+  title: NullableText;
+  body: NullableText;
   valence: ColumnType<number | null, number | null | undefined, number | null>;
-  artifact_uri: ColumnType<string | null, string | null | undefined, string | null>;
+  artifact_uri: NullableText;
   embedding: VectorColumn;
   meta: JsonbColumn;
 }
 
 export interface FactsTable {
   id: Generated<string>;
+  user_id: string;
   subject_id: string;
   statement: string;
-  predicate: ColumnType<string | null, string | null | undefined, string | null>;
-  object_id: ColumnType<string | null, string | null | undefined, string | null>;
+  predicate: NullableText;
+  object_id: NullableText;
   confidence: ColumnType<number, number | undefined, number>;
   source_episode: string;
   source_id: string;
   learned_at: Generated<Date>;
-  last_confirmed: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  last_confirmed: NullableDate;
   reinforced: ColumnType<number, number | undefined, number>;
-  contradicts: ColumnType<string | null, string | null | undefined, string | null>;
+  contradicts: NullableText;
   status: ColumnType<FactStatus, FactStatus | undefined, FactStatus>;
   embedding: VectorColumn;
 }
 
 export interface EdgesTable {
   id: Generated<string>;
+  user_id: string;
   src_id: string;
   dst_id: string;
   rel: string;
@@ -90,20 +127,22 @@ export interface EdgesTable {
 
 export interface OpenLoopsTable {
   id: Generated<string>;
+  user_id: string;
   description: string;
-  counterparty: ColumnType<string | null, string | null | undefined, string | null>;
+  counterparty: NullableText;
   direction: LoopDirection;
-  due_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
-  source_episode: ColumnType<string | null, string | null | undefined, string | null>;
+  due_at: NullableDate;
+  source_episode: NullableText;
   status: ColumnType<LoopStatus, LoopStatus | undefined, LoopStatus>;
   created_at: Generated<Date>;
 }
 
 export interface RetentionTable {
   episode_id: string;
+  user_id: string;
   tier: ColumnType<RetentionTier, RetentionTier | undefined, RetentionTier>;
-  compress_after: ColumnType<string | null, string | null | undefined, string | null>;
-  purge_after: ColumnType<string | null, string | null | undefined, string | null>;
+  compress_after: NullableText;
+  purge_after: NullableText;
   vaulted: ColumnType<boolean, boolean | undefined, boolean>;
 }
 
@@ -111,19 +150,23 @@ export type BlackboardStatus = "active" | "dismissed" | "done";
 
 export interface BlackboardTable {
   id: Generated<string>;
+  user_id: string;
   kind: string;
   agent: string;
   title: string;
-  body: ColumnType<string | null, string | null | undefined, string | null>;
-  entity_id: ColumnType<string | null, string | null | undefined, string | null>;
+  body: NullableText;
+  entity_id: NullableText;
   salience: ColumnType<number, number | undefined, number>;
   payload: JsonbColumn;
   status: ColumnType<BlackboardStatus, BlackboardStatus | undefined, BlackboardStatus>;
   created_at: Generated<Date>;
-  expires_at: ColumnType<Date | null, Date | string | null | undefined, Date | string | null>;
+  expires_at: NullableDate;
 }
 
 export interface Database {
+  users: UsersTable;
+  oauth_accounts: OauthAccountsTable;
+  sessions: SessionsTable;
   sources: SourcesTable;
   entities: EntitiesTable;
   episodes: EpisodesTable;

@@ -49,6 +49,7 @@ function snippet(body: string | null, max = 160): string | null {
  */
 export async function briefEntity(
   deps: BrieferDeps,
+  userId: string,
   entityId: string,
   now = new Date(),
 ): Promise<Briefing> {
@@ -58,15 +59,16 @@ export async function briefEntity(
     .selectFrom("entities")
     .select(["id", "canonical_name", "aliases", "attrs", "closeness"])
     .where("id", "=", entityId)
+    .where("user_id", "=", userId)
     .executeTakeFirstOrThrow();
 
-  const health = await relationshipHealth(db, entityId, now);
+  const health = await relationshipHealth(db, userId, entityId, now);
 
   const interactions = await sql<{ id: string; title: string | null; occurred_at: Date; body: string | null }>`
     SELECT DISTINCT ON (ep.id) ep.id, ep.title, ep.occurred_at, ep.body
     FROM edges e
     JOIN episodes ep ON ep.id = e.dst_id
-    WHERE e.src_id = ${entityId} AND e.rel = 'mentioned_in'
+    WHERE e.user_id = ${userId} AND e.src_id = ${entityId} AND e.rel = 'mentioned_in'
     ORDER BY ep.id, ep.occurred_at DESC
   `.execute(db);
   const recentInteractions = interactions.rows
@@ -77,6 +79,7 @@ export async function briefEntity(
   const facts = await db
     .selectFrom("facts")
     .select(["statement", "source_episode"])
+    .where("user_id", "=", userId)
     .where("subject_id", "=", entityId)
     .where("status", "=", "active")
     .orderBy("reinforced", "desc")

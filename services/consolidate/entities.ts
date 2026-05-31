@@ -63,13 +63,17 @@ export interface ResolveEntitiesResult {
  * ("John" with two different "John X"). Phase-later: use embeddings/LLM to
  * disambiguate. Conservative enough for now; merges are logged by count.
  */
-export async function resolveEntities(db: Db): Promise<ResolveEntitiesResult> {
+export async function resolveEntities(
+  db: Db,
+  userId: string,
+): Promise<ResolveEntitiesResult> {
   let merged = 0;
 
   for (;;) {
     const entities = await db
       .selectFrom("entities")
       .select(["id", "type", "canonical_name", "aliases", "created_at"])
+      .where("user_id", "=", userId)
       .orderBy("created_at", "asc")
       .orderBy("id", "asc")
       .execute();

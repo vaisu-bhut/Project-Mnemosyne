@@ -1,5 +1,5 @@
 import { sql } from "kysely";
-import { createDb, type Db } from "../services/db/index.js";
+import { createDb, createUser, type Db } from "../services/db/index.js";
 
 export const DIM = Number(process.env.VECTOR_DIM ?? 1024);
 
@@ -30,10 +30,19 @@ export function testDb(): Db {
   return createDb(url);
 }
 
-/** Wipe all domain tables between tests. */
+/** Wipe all domain tables between tests (users included). */
 export async function truncateAll(db: Db): Promise<void> {
   await sql`
-    TRUNCATE sources, entities, episodes, facts, edges, open_loops, retention, blackboard
+    TRUNCATE users, sessions, oauth_accounts, sources, entities, episodes,
+             facts, edges, open_loops, retention, blackboard
     RESTART IDENTITY CASCADE
   `.execute(db);
+}
+
+let userCounter = 0;
+
+/** Create a throwaway user and return its id (everything is user-scoped). */
+export async function seedUser(db: Db): Promise<string> {
+  const user = await createUser(db, { email: `test-${++userCounter}-${Date.now()}@example.com` });
+  return user.id;
 }

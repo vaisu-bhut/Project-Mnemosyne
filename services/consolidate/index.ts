@@ -47,16 +47,17 @@ export interface ConsolidationReport {
  */
 export async function runConsolidation(
   deps: ConsolidateDeps,
+  userId: string,
   opts: ConsolidateOptions = {},
 ): Promise<ConsolidationReport> {
-  const { merged } = await resolveEntities(deps.db);
-  const { retracted } = await deduplicateFacts(deps.db);
-  const { linked } = await detectContradictions(deps.db);
-  const { staled } = await decayFacts(deps.db, {
+  const { merged } = await resolveEntities(deps.db, userId);
+  const { retracted } = await deduplicateFacts(deps.db, userId);
+  const { linked } = await detectContradictions(deps.db, userId);
+  const { staled } = await decayFacts(deps.db, userId, {
     maxAgeDays: opts.decayMaxAgeDays,
     now: opts.now,
   });
-  const { compressed, purged } = await enforceRetention(deps, {
+  const { compressed, purged } = await enforceRetention(deps, userId, {
     compressAfterDays: opts.compressAfterDays,
     purgeAfterDays: opts.purgeAfterDays,
     now: opts.now,

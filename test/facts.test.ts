@@ -6,17 +6,22 @@ import {
   reinforceFact,
   upsertEntity,
 } from "../services/db/index.js";
-import { testDb, truncateAll } from "./helpers.js";
+import { seedUser, testDb, truncateAll } from "./helpers.js";
 
 const db = testDb();
+let userId: string;
 
-beforeEach(() => truncateAll(db));
+beforeEach(async () => {
+  await truncateAll(db);
+  userId = await seedUser(db);
+});
 afterAll(() => db.destroy());
 
 async function fixtures() {
-  const source = await createSource(db, { kind: "gmail", displayName: "Gmail" });
-  const subject = await upsertEntity(db, { type: "person", canonicalName: "Sara" });
+  const source = await createSource(db, { userId, kind: "gmail", displayName: "Gmail" });
+  const subject = await upsertEntity(db, { userId, type: "person", canonicalName: "Sara" });
   const episode = await insertEpisode(db, {
+    userId,
     occurredAt: new Date(),
     sourceId: source.id,
     externalId: "ep-1",
@@ -30,13 +35,14 @@ describe("insertFact (mandatory provenance)", () => {
     const { subject } = await fixtures();
     await expect(
       // @ts-expect-error — deliberately omitting required provenance
-      insertFact(db, { subjectId: subject.id, statement: "no source" }),
+      insertFact(db, { userId, subjectId: subject.id, statement: "no source" }),
     ).rejects.toThrow(/provenance is mandatory/i);
   });
 
   it("inserts a fact with provenance and defaults reinforced=1", async () => {
     const { source, subject, episode } = await fixtures();
     const fact = await insertFact(db, {
+      userId,
       subjectId: subject.id,
       statement: "Sara's dad has heart issues.",
       predicate: "health",
@@ -52,6 +58,7 @@ describe("insertFact (mandatory provenance)", () => {
   it("reinforceFact bumps the counter and stamps last_confirmed", async () => {
     const { source, subject, episode } = await fixtures();
     const fact = await insertFact(db, {
+      userId,
       subjectId: subject.id,
       statement: "Sara runs marathons.",
       sourceEpisode: episode.id,

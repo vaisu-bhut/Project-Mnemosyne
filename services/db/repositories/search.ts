@@ -13,9 +13,12 @@ export type WithDistance<T> = T & { distance: number };
 // NOTE: `<=>` is pgvector's cosine-distance operator, matched by the
 // vector_cosine_ops HNSW indexes created in the migration.
 
-/** Cosine KNN over episode embeddings. */
+// All KNN queries are scoped to a user — recall never crosses the boundary.
+
+/** Cosine KNN over episode embeddings (user-scoped). */
 export async function searchEpisodesByVector(
   db: Db,
+  userId: string,
   embedding: number[],
   k: number,
 ): Promise<WithDistance<Episode>[]> {
@@ -23,16 +26,17 @@ export async function searchEpisodesByVector(
   const res = await sql<WithDistance<Episode>>`
     SELECT *, embedding <=> ${vec}::vector AS distance
     FROM episodes
-    WHERE embedding IS NOT NULL
+    WHERE user_id = ${userId} AND embedding IS NOT NULL
     ORDER BY embedding <=> ${vec}::vector
     LIMIT ${k}
   `.execute(db);
   return res.rows;
 }
 
-/** Cosine KNN over fact embeddings. */
+/** Cosine KNN over fact embeddings (user-scoped, active only). */
 export async function searchFactsByVector(
   db: Db,
+  userId: string,
   embedding: number[],
   k: number,
 ): Promise<WithDistance<Fact>[]> {
@@ -40,16 +44,17 @@ export async function searchFactsByVector(
   const res = await sql<WithDistance<Fact>>`
     SELECT *, embedding <=> ${vec}::vector AS distance
     FROM facts
-    WHERE embedding IS NOT NULL
+    WHERE user_id = ${userId} AND status = 'active' AND embedding IS NOT NULL
     ORDER BY embedding <=> ${vec}::vector
     LIMIT ${k}
   `.execute(db);
   return res.rows;
 }
 
-/** Cosine KNN over entity embeddings. */
+/** Cosine KNN over entity embeddings (user-scoped). */
 export async function searchEntitiesByVector(
   db: Db,
+  userId: string,
   embedding: number[],
   k: number,
 ): Promise<WithDistance<Entity>[]> {
@@ -57,7 +62,7 @@ export async function searchEntitiesByVector(
   const res = await sql<WithDistance<Entity>>`
     SELECT *, embedding <=> ${vec}::vector AS distance
     FROM entities
-    WHERE embedding IS NOT NULL
+    WHERE user_id = ${userId} AND embedding IS NOT NULL
     ORDER BY embedding <=> ${vec}::vector
     LIMIT ${k}
   `.execute(db);

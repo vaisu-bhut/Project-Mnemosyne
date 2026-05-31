@@ -1,21 +1,26 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "kysely";
 import { createSource, insertEpisode } from "../services/db/index.js";
-import { testDb, truncateAll } from "./helpers.js";
+import { seedUser, testDb, truncateAll } from "./helpers.js";
 
 const db = testDb();
+let userId: string;
 
-beforeEach(() => truncateAll(db));
+beforeEach(async () => {
+  await truncateAll(db);
+  userId = await seedUser(db);
+});
 afterAll(() => db.destroy());
 
 async function aSource() {
-  return createSource(db, { kind: "gmail", displayName: "Gmail" });
+  return createSource(db, { userId, kind: "gmail", displayName: "Gmail" });
 }
 
 describe("insertEpisode (partitioning + dedup)", () => {
   it("inserts an episode into the right monthly partition", async () => {
     const src = await aSource();
     const ep = await insertEpisode(db, {
+      userId,
       occurredAt: new Date(),
       sourceId: src.id,
       externalId: "msg-1",
@@ -30,6 +35,7 @@ describe("insertEpisode (partitioning + dedup)", () => {
     const src = await aSource();
     const occurredAt = new Date("2026-05-15T12:00:00Z");
     const first = await insertEpisode(db, {
+      userId,
       occurredAt,
       sourceId: src.id,
       externalId: "dup-1",
@@ -37,6 +43,7 @@ describe("insertEpisode (partitioning + dedup)", () => {
       title: "v1",
     });
     const second = await insertEpisode(db, {
+      userId,
       occurredAt,
       sourceId: src.id,
       externalId: "dup-1",
@@ -58,8 +65,8 @@ describe("insertEpisode (partitioning + dedup)", () => {
   it("always inserts when external_id is null (NULLs are distinct)", async () => {
     const src = await aSource();
     const occurredAt = new Date("2026-05-16T09:00:00Z");
-    const a = await insertEpisode(db, { occurredAt, sourceId: src.id, kind: "note" });
-    const b = await insertEpisode(db, { occurredAt, sourceId: src.id, kind: "note" });
+    const a = await insertEpisode(db, { userId, occurredAt, sourceId: src.id, kind: "note" });
+    const b = await insertEpisode(db, { userId, occurredAt, sourceId: src.id, kind: "note" });
     expect(b.id).not.toBe(a.id);
   });
 });

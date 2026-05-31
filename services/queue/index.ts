@@ -17,8 +17,14 @@ export interface ExtractJob {
   episodeId: string;
   sourceId: string;
 }
-export type ConsolidateJob = Record<string, never>;
-export type NudgeJob = Record<string, never>;
+// Optional userId: scheduled runs omit it (process all users); on-demand runs
+// from the API set it to the requesting user.
+export interface ConsolidateJob {
+  userId?: string;
+}
+export interface NudgeJob {
+  userId?: string;
+}
 
 export function createIngestQueue(connection: Redis): Queue<IngestJob> {
   return new Queue<IngestJob>(QUEUES.ingest, { connection });

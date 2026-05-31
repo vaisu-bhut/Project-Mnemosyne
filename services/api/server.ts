@@ -7,6 +7,7 @@ import {
   createDb,
   createSource,
   dismissBlackboard,
+  getSource,
   listMind,
   listOpenLoops,
   type Db,
@@ -33,11 +34,23 @@ import { createArtifactStore, type ArtifactStore } from "../storage/index.js";
 import { createIngestQueue } from "../queue/index.js";
 import type { Queue } from "bullmq";
 import type { IngestJob } from "../queue/index.js";
+import {
+  getUserFromRequest,
+  registerAuthRoutes,
+  type AuthUser,
+} from "../auth/index.js";
+
+declare module "fastify" {
+  interface FastifyRequest {
+    user?: AuthUser;
+  }
+}
 
 export interface ServerDeps {
   db: Db;
   store: ArtifactStore;
   redis: Redis;
+  config: AppConfig;
   queryEmbedder: Embedder;
   generator: TextGenerator;
   ingestQueue: Queue<IngestJob>;
@@ -72,9 +85,27 @@ const RetentionBody = z.object({
   vaulted: z.boolean().optional(),
 });
 
+// Paths reachable without a valid access token.
+function isPublicPath(path: string): boolean {
+  return path === "/health" || path === "/" || path.startsWith("/auth/");
+}
+
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: true });
-  const { db, store, redis, queryEmbedder, generator, ingestQueue, consolidateOptions, relationshipStaleDays } = deps;
+  const { db, store, redis, config, queryEmbedder, generator, ingestQueue, consolidateOptions, relationshipStaleDays } = deps;
+
+  // Authentication guard: populate req.user from the Bearer token; reject
+  // protected routes without a valid one. Every handler below is user-scoped.
+  app.addHook("onRequest", async (req, reply) => {
+    const path = (req.url.split("?")[0] ?? "").replace(/\/+$/, "") || "/";
+    const user = await getUserFromRequest(config, req);
+    if (user) req.user = user;
+    if (!isPublicPath(path) && !req.user) {
+      await reply.code(401).send({ error: "authentication required" });
+    }
+  });
+
+  registerAuthRoutes(app, { db, config });
 
   app.get("/health", async (_req, reply) => {
     const [database, redisOk, storage] = await Promise.all([
@@ -89,21 +120,17 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return { status: ok ? "ok" : "degraded", checks: { database, redis: redisOk, storage } };
   });
 
-  // Register a connector/source.
+  // Register a connector/source owned by the caller.
   app.post("/sources", async (req, reply) => {
     const body = CreateSourceBody.parse(req.body);
-    const source = await createSource(db, body);
+    const source = await createSource(db, { userId: req.user!.id, ...body });
     reply.code(201);
     return source;
   });
 
-  // Trigger ingestion for a source (enqueues a job; the worker does the work).
+  // Trigger ingestion for one of the caller's sources.
   app.post<{ Params: { id: string } }>("/sources/:id/ingest", async (req, reply) => {
-    const source = await db
-      .selectFrom("sources")
-      .selectAll()
-      .where("id", "=", req.params.id)
-      .executeTakeFirst();
+    const source = await getSource(db, req.user!.id, req.params.id);
     if (!source) {
       reply.code(404);
       return { error: "source not found" };
@@ -113,79 +140,79 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return { jobId: job.id, sourceId: source.id };
   });
 
-  // Cited hybrid search over memory.
+  // Cited hybrid search over the caller's memory.
   app.post("/search", async (req) => {
     const { query, k } = SearchBody.parse(req.body);
-    return searchMemory({ db, embedder: queryEmbedder }, query, k);
+    return searchMemory({ db, embedder: queryEmbedder }, req.user!.id, query, k);
   });
 
   // Grounded question answering with citations.
   app.post("/ask", async (req) => {
     const { question, k } = AskBody.parse(req.body);
-    return ask({ db, embedder: queryEmbedder, generator }, question, k);
+    return ask({ db, embedder: queryEmbedder, generator }, req.user!.id, question, k);
   });
 
   // Open Loops dashboard.
   app.get<{ Querystring: { status?: LoopStatus } }>("/open-loops", async (req) => {
-    return listOpenLoops(db, req.query.status);
+    return listOpenLoops(db, req.user!.id, req.query.status);
   });
 
-  // Run the consolidation ("sleep") pass now.
-  app.post("/consolidate", async () => {
-    return runConsolidation({ db, store }, consolidateOptions);
+  // Run the consolidation ("sleep") pass now for the caller.
+  app.post("/consolidate", async (req) => {
+    return runConsolidation({ db, store }, req.user!.id, consolidateOptions);
   });
 
   // Forget an episode across all stores (irreversible).
   app.post<{ Params: { id: string } }>("/episodes/:id/forget", async (req) => {
-    return forgetEpisode({ db, store }, req.params.id);
+    return forgetEpisode({ db, store }, req.user!.id, req.params.id);
   });
 
   // Set a per-episode retention policy.
   app.post("/retention", async (req, reply) => {
     const { episodeId, ...policy } = RetentionBody.parse(req.body);
-    await setRetention(db, episodeId, policy);
+    await setRetention(db, req.user!.id, episodeId, policy);
     reply.code(204);
   });
 
   // Facts flagged as contradicting another.
-  app.get("/contradictions", async () => listContradictions(db));
+  app.get("/contradictions", async (req) => listContradictions(db, req.user!.id));
 
   // Build/refresh an entity's summary node.
   app.post<{ Params: { id: string } }>("/entities/:id/summarize", async (req) => {
-    const summary = await summarizeEntity({ db, generator }, req.params.id);
+    const summary = await summarizeEntity({ db, generator }, req.user!.id, req.params.id);
     return { id: req.params.id, summary };
   });
 
-  // --- Agent mesh (Phase 3) ---
+  // --- Agent mesh ---
 
-  // "What's on my mind": the most salient working-memory entries right now.
+  // "What's on my mind": the caller's most salient working-memory entries.
   app.get<{ Querystring: { k?: string } }>("/mind", async (req) => {
     const k = req.query.k ? Number(req.query.k) : 10;
-    return listMind(db, k);
+    return listMind(db, req.user!.id, k);
   });
 
   // Run the Nudger now (also runs on a schedule in the worker).
-  app.post("/agents/nudger/run", async () => {
-    return runNudger(db, { staleDays: relationshipStaleDays });
+  app.post("/agents/nudger/run", async (req) => {
+    return runNudger(db, req.user!.id, { staleDays: relationshipStaleDays });
   });
 
-  // Relationship health across people.
-  app.get("/people/health", async () => relationshipHealthAll(db));
+  // Relationship health across the caller's people.
+  app.get("/people/health", async (req) => relationshipHealthAll(db, req.user!.id));
 
   // Pre-meeting briefing for a person.
   app.get<{ Params: { id: string } }>("/people/:id/brief", async (req) => {
-    return briefEntity({ db, generator }, req.params.id);
+    return briefEntity({ db, generator }, req.user!.id, req.params.id);
   });
 
   // The Conductor: route a free-text query to the right agent.
   app.post("/conduct", async (req) => {
     const { query } = ConductBody.parse(req.body);
-    return route({ db, queryEmbedder, generator }, query);
+    return route({ db, queryEmbedder, generator }, req.user!.id, query);
   });
 
   // Dismiss a blackboard entry.
   app.post<{ Params: { id: string } }>("/blackboard/:id/dismiss", async (req, reply) => {
-    await dismissBlackboard(db, req.params.id);
+    await dismissBlackboard(db, req.user!.id, req.params.id);
     reply.code(204);
   });
 
@@ -221,6 +248,7 @@ export function createServer(config: AppConfig): CreatedServer {
     db,
     store,
     redis,
+    config,
     queryEmbedder,
     generator,
     ingestQueue,

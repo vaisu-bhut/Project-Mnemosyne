@@ -8,7 +8,12 @@ export type {
 } from "./types.js";
 export { toVector, parseVector } from "./vector.js";
 
-export { createSource, type Source, type CreateSourceInput } from "./repositories/sources.js";
+export {
+  createSource,
+  getSource,
+  type Source,
+  type CreateSourceInput,
+} from "./repositories/sources.js";
 export { upsertEntity, type Entity, type UpsertEntityInput } from "./repositories/entities.js";
 export { insertEpisode, type Episode, type InsertEpisodeInput } from "./repositories/episodes.js";
 export {
@@ -45,3 +50,23 @@ export {
   type WriteBlackboardInput,
 } from "./repositories/blackboard.js";
 export type { BlackboardStatus } from "./types.js";
+export {
+  createUser,
+  getUserByEmail,
+  getUserById,
+  listUserIds,
+  type User,
+  type CreateUserInput,
+} from "./repositories/users.js";
+export {
+  createSession,
+  findSessionByHash,
+  deleteSessionByHash,
+  type Session,
+} from "./repositories/sessions.js";
+export {
+  upsertOauthAccount,
+  getOauthAccount,
+  updateOauthTokens,
+  type OauthAccount,
+} from "./repositories/oauthAccounts.js";
