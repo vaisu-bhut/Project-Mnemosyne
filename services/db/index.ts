@@ -12,6 +12,8 @@ export {
   createSource,
   getSource,
   updateSourceConfig,
+  listSources,
+  classifySource,
   type Source,
   type CreateSourceInput,
 } from "./repositories/sources.js";
@@ -35,6 +37,7 @@ export {
   searchFactsByVector,
   searchEntitiesByVector,
   type WithDistance,
+  type SearchOptions,
 } from "./repositories/search.js";
 export {
   createOpenLoop,

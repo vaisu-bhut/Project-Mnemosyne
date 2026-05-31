@@ -4,15 +4,18 @@ import { sql } from "kysely";
 import { z } from "zod";
 import type { AppConfig } from "../config/index.js";
 import {
+  classifySource,
   createDb,
   createSource,
   dismissBlackboard,
   getSource,
   listMind,
   listOpenLoops,
+  listSources,
   type Db,
   type LoopStatus,
 } from "../db/index.js";
+import type { AccessContext, Mode } from "../guardian/index.js";
 import {
   briefEntity,
   relationshipHealthAll,
@@ -75,9 +78,21 @@ const CreateSourceBody = z.object({
   sensitive: z.boolean().optional(),
   config: z.record(z.unknown()).optional(),
 });
-const SearchBody = z.object({ query: z.string().min(1), k: z.number().int().positive().max(50).optional() });
-const AskBody = z.object({ question: z.string().min(1), k: z.number().int().positive().max(50).optional() });
-const ConductBody = z.object({ query: z.string().min(1) });
+const ModeField = {
+  mode: z.enum(["default", "work", "guest"]).optional(),
+  includeSensitive: z.boolean().optional(),
+};
+const SearchBody = z.object({
+  query: z.string().min(1),
+  k: z.number().int().positive().max(50).optional(),
+  ...ModeField,
+});
+const AskBody = z.object({
+  question: z.string().min(1),
+  k: z.number().int().positive().max(50).optional(),
+  ...ModeField,
+});
+const ConductBody = z.object({ query: z.string().min(1), ...ModeField });
 const RetentionBody = z.object({
   episodeId: z.string().uuid(),
   tier: z.enum(["raw_forever", "standard", "ephemeral"]).optional(),
@@ -85,6 +100,14 @@ const RetentionBody = z.object({
   purgeAfter: z.string().optional(),
   vaulted: z.boolean().optional(),
 });
+const ClassifyBody = z.object({
+  sensitive: z.boolean().optional(),
+  scope: z.string().min(1).optional(),
+});
+
+function accessContext(body: { mode?: Mode; includeSensitive?: boolean }): AccessContext {
+  return { mode: body.mode, includeSensitive: body.includeSensitive };
+}
 
 // Paths reachable without a valid access token.
 function isPublicPath(path: string): boolean {
@@ -129,6 +152,20 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return source;
   });
 
+  // List the caller's sources (with privacy classification).
+  app.get("/sources", async (req) => listSources(db, req.user!.id));
+
+  // Classify a source for the Guardian (sensitive flag / scope).
+  app.patch<{ Params: { id: string } }>("/sources/:id", async (req, reply) => {
+    const patch = ClassifyBody.parse(req.body);
+    const source = await classifySource(db, req.user!.id, req.params.id, patch);
+    if (!source) {
+      reply.code(404);
+      return { error: "source not found" };
+    }
+    return source;
+  });
+
   // Trigger ingestion for one of the caller's sources.
   app.post<{ Params: { id: string } }>("/sources/:id/ingest", async (req, reply) => {
     const source = await getSource(db, req.user!.id, req.params.id);
@@ -141,16 +178,16 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return { jobId: job.id, sourceId: source.id };
   });
 
-  // Cited hybrid search over the caller's memory.
+  // Cited hybrid search over the caller's memory (Guardian-filtered by mode).
   app.post("/search", async (req) => {
-    const { query, k } = SearchBody.parse(req.body);
-    return searchMemory({ db, embedder: queryEmbedder }, req.user!.id, query, k);
+    const { query, k, ...mode } = SearchBody.parse(req.body);
+    return searchMemory({ db, embedder: queryEmbedder }, req.user!.id, query, k, accessContext(mode));
   });
 
-  // Grounded question answering with citations.
+  // Grounded question answering with citations (Guardian-filtered by mode).
   app.post("/ask", async (req) => {
-    const { question, k } = AskBody.parse(req.body);
-    return ask({ db, embedder: queryEmbedder, generator }, req.user!.id, question, k);
+    const { question, k, ...mode } = AskBody.parse(req.body);
+    return ask({ db, embedder: queryEmbedder, generator }, req.user!.id, question, k, accessContext(mode));
   });
 
   // Open Loops dashboard.
@@ -213,8 +250,8 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   // The Conductor: route a free-text query to the right agent.
   app.post("/conduct", async (req) => {
-    const { query } = ConductBody.parse(req.body);
-    return route({ db, queryEmbedder, generator }, req.user!.id, query);
+    const { query, ...mode } = ConductBody.parse(req.body);
+    return route({ db, queryEmbedder, generator }, req.user!.id, query, accessContext(mode));
   });
 
   // Dismiss a blackboard entry.

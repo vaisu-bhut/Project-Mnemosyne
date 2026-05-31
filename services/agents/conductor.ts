@@ -3,6 +3,7 @@ import { listMind, type Db } from "../db/index.js";
 import type { Embedder } from "../embeddings/index.js";
 import type { TextGenerator } from "../llm/index.js";
 import { ask } from "../memory/retrieve.js";
+import type { AccessContext } from "../guardian/index.js";
 import { briefEntity } from "./briefer.js";
 import { relationshipAlerts } from "./people.js";
 
@@ -57,8 +58,10 @@ export async function route(
   deps: ConductorDeps,
   userId: string,
   query: string,
+  ctx: AccessContext = {},
 ): Promise<RouteResult> {
   const intent = classify(query);
+  const askDeps = { db: deps.db, embedder: deps.queryEmbedder, generator: deps.generator };
 
   if (intent === "nudges") {
     return { intent, via: "blackboard", result: await listMind(deps.db, userId, 10) };
@@ -76,24 +79,8 @@ export async function route(
       }
     }
     // No known person named — fall back to recall.
-    return {
-      intent: "recall",
-      via: "fallback",
-      result: await ask(
-        { db: deps.db, embedder: deps.queryEmbedder, generator: deps.generator },
-        userId,
-        query,
-      ),
-    };
+    return { intent: "recall", via: "fallback", result: await ask(askDeps, userId, query, 5, ctx) };
   }
 
-  return {
-    intent: "recall",
-    via: "librarian",
-    result: await ask(
-      { db: deps.db, embedder: deps.queryEmbedder, generator: deps.generator },
-      userId,
-      query,
-    ),
-  };
+  return { intent: "recall", via: "librarian", result: await ask(askDeps, userId, query, 5, ctx) };
 }

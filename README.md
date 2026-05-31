@@ -239,6 +239,30 @@ curl -X POST localhost:3000/blackboard/<id>/dismiss -d '{}' -H "content-type: ap
   upgrade). Agents coordinate only via the Conductor and the blackboard, so the
   flow stays observable and stoppable.
 
+## Privacy compartments (the Guardian)
+
+Sources carry a `sensitive` flag and a `scope` (e.g. `personal`, `work`,
+`health`). The **Guardian** decides which sources' content may be surfaced in a
+given context, enforced at retrieval (facts + episodes, which carry `source_id`):
+
+- **guest** — hides every sensitive source (a visitor sees only safe context).
+- **work** — firewalls everything not scoped `work` (no personal/health leakage).
+- **default** — shows all, unless `includeSensitive: false`.
+
+```powershell
+curl localhost:3000/sources -H "authorization: Bearer <t>"          # list + classify
+curl -X PATCH localhost:3000/sources/<id> -H "authorization: Bearer <t>" `
+  -H "content-type: application/json" -d '{"sensitive":true,"scope":"health"}'
+
+# search/ask/conduct take an optional mode
+curl -X POST localhost:3000/ask -H "authorization: Bearer <t>" `
+  -H "content-type: application/json" -d '{"question":"...","mode":"guest"}'
+```
+
+Contradiction links are advisory (never auto-retract); likewise the Guardian
+currently gates *reads* — action-level vetoes arrive with the Drafter, and
+entity-level masking + the consent layer (third-party data) are the next steps.
+
 ## Useful scripts
 
 | Command | What it does |

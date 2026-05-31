@@ -58,3 +58,32 @@ export async function updateSourceConfig(
     .where("id", "=", sourceId)
     .execute();
 }
+
+/** List a user's sources (newest first). */
+export async function listSources(db: Db, userId: string): Promise<Source[]> {
+  return db
+    .selectFrom("sources")
+    .selectAll()
+    .where("user_id", "=", userId)
+    .orderBy("created_at", "desc")
+    .execute();
+}
+
+/** Set a source's privacy classification (Guardian inputs). Owner-scoped. */
+export async function classifySource(
+  db: Db,
+  userId: string,
+  sourceId: string,
+  patch: { sensitive?: boolean; scope?: string },
+): Promise<Source | undefined> {
+  return db
+    .updateTable("sources")
+    .set({
+      ...(patch.sensitive !== undefined ? { sensitive: patch.sensitive } : {}),
+      ...(patch.scope !== undefined ? { scope: patch.scope } : {}),
+    })
+    .where("id", "=", sourceId)
+    .where("user_id", "=", userId)
+    .returningAll()
+    .executeTakeFirst();
+}

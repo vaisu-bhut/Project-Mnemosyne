@@ -6,6 +6,7 @@ import {
 } from "../db/index.js";
 import type { Embedder } from "../embeddings/index.js";
 import type { TextGenerator } from "../llm/index.js";
+import { resolveVisibility, type AccessContext } from "../guardian/index.js";
 
 export interface SearchDeps {
   db: Db;
@@ -62,11 +63,16 @@ export async function searchMemory(
   userId: string,
   query: string,
   k = 5,
+  ctx: AccessContext = {},
 ): Promise<SearchResult> {
+  // Guardian: hide sources that aren't visible in this context.
+  const { deniedSourceIds } = await resolveVisibility(deps.db, userId, ctx);
+  const opts = { excludeSourceIds: deniedSourceIds };
+
   const qv = await deps.embedder.embedOne(query);
   const [facts, episodes, entities] = await Promise.all([
-    searchFactsByVector(deps.db, userId, qv, k),
-    searchEpisodesByVector(deps.db, userId, qv, k),
+    searchFactsByVector(deps.db, userId, qv, k, opts),
+    searchEpisodesByVector(deps.db, userId, qv, k, opts),
     searchEntitiesByVector(deps.db, userId, qv, k),
   ]);
 
@@ -115,8 +121,9 @@ export async function ask(
   userId: string,
   question: string,
   k = 5,
+  ctx: AccessContext = {},
 ): Promise<Answer> {
-  const result = await searchMemory(deps, userId, question, k);
+  const result = await searchMemory(deps, userId, question, k, ctx);
   const facts = result.facts;
   const episodes = result.episodes;
   const citations: Citation[] = [
