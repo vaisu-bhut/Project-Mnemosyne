@@ -3,11 +3,10 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
+import { AuthProvider } from "@/lib/auth/AuthProvider";
+import { ModeProvider } from "@/lib/mode/ModeProvider";
 
-/**
- * Client-side app providers. Phase 0 wires TanStack Query + toasts; later phases
- * nest AuthProvider and ModeProvider inside this tree.
- */
+/** Client-side app providers: server state, auth session, Guardian mode, toasts. */
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -24,7 +23,9 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <AuthProvider>
+        <ModeProvider>{children}</ModeProvider>
+      </AuthProvider>
       <Toaster richColors position="top-right" />
     </QueryClientProvider>
   );
