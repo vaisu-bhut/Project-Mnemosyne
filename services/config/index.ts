@@ -10,6 +10,11 @@ import { z } from "zod";
  */
 export const DEFAULT_VECTOR_DIM = 1024;
 
+/** Coerce an env string ("true"/"false") or boolean into a boolean. */
+const envBool = z
+  .union([z.boolean(), z.string()])
+  .transform((v) => (typeof v === "boolean" ? v : v.toLowerCase() === "true"));
+
 const EnvSchema = z.object({
   DATABASE_URL: z.string().url(),
   TEST_DATABASE_URL: z.string().url().optional(),
@@ -50,6 +55,16 @@ const EnvSchema = z.object({
   RETENTION_PURGE_AFTER_DAYS: z.coerce.number().int().positive().default(365),
   // Repeatable consolidation cadence (ms). 0 disables the scheduler.
   CONSOLIDATE_INTERVAL_MS: z.coerce.number().int().min(0).default(86_400_000),
+
+  // --- Semantic intelligence (embedding candidate-gen + LLM adjudication) ---
+  // When true (and LLM_PROVIDER=gemini), alias resolution, contradiction
+  // detection, and Conductor routing use meaning, not just lexical heuristics.
+  SEMANTIC_INTELLIGENCE: envBool.default(false),
+  // Cosine-similarity thresholds for generating candidate pairs to adjudicate.
+  ENTITY_SIM_THRESHOLD: z.coerce.number().min(0).max(1).default(0.84),
+  CONTRADICTION_SIM_THRESHOLD: z.coerce.number().min(0).max(1).default(0.8),
+  // Cap on LLM-adjudicated pairs per pass (cost control).
+  SEMANTIC_MAX_PAIRS: z.coerce.number().int().positive().default(25),
 
   // --- Agents (Phase 3) ---
   // No contact with a person for this many days raises a relationship alert.

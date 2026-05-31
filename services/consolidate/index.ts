@@ -1,5 +1,6 @@
 import type { Db } from "../db/index.js";
 import type { ArtifactStore } from "../storage/index.js";
+import type { TextGenerator } from "../llm/index.js";
 import { resolveEntities } from "./entities.js";
 import { deduplicateFacts } from "./dedup.js";
 import { detectContradictions } from "./contradictions.js";
@@ -21,12 +22,18 @@ export { summarizeEntity, summarizeAllEntities } from "./summarize.js";
 export interface ConsolidateDeps {
   db: Db;
   store: ArtifactStore;
+  /** Supplying a generator switches alias resolution + contradiction detection
+   *  to the semantic (embedding + LLM) strategies. */
+  generator?: TextGenerator;
 }
 
 export interface ConsolidateOptions {
   decayMaxAgeDays?: number;
   compressAfterDays?: number;
   purgeAfterDays?: number;
+  entitySimThreshold?: number;
+  contradictionSimThreshold?: number;
+  maxPairs?: number;
   now?: Date;
 }
 
@@ -42,17 +49,26 @@ export interface ConsolidationReport {
 /**
  * The "sleep" pass. Order matters: resolve aliases first (which repoints facts
  * and can create duplicates), then dedup, then look for contradictions among
- * what remains, then decay, then enforce retention. All deterministic — no LLM
- * or embeddings required, so it's safe to run on a schedule.
+ * what remains, then decay, then enforce retention. Lexical by default (safe to
+ * schedule offline); when `deps.generator` is set, alias resolution and
+ * contradiction detection use the semantic strategies.
  */
 export async function runConsolidation(
   deps: ConsolidateDeps,
   userId: string,
   opts: ConsolidateOptions = {},
 ): Promise<ConsolidationReport> {
-  const { merged } = await resolveEntities(deps.db, userId);
+  const { merged } = await resolveEntities(deps.db, userId, {
+    generator: deps.generator,
+    similarityThreshold: opts.entitySimThreshold,
+    maxPairs: opts.maxPairs,
+  });
   const { retracted } = await deduplicateFacts(deps.db, userId);
-  const { linked } = await detectContradictions(deps.db, userId);
+  const { linked } = await detectContradictions(deps.db, userId, {
+    generator: deps.generator,
+    similarityThreshold: opts.contradictionSimThreshold,
+    maxPairs: opts.maxPairs,
+  });
   const { staled } = await decayFacts(deps.db, userId, {
     maxAgeDays: opts.decayMaxAgeDays,
     now: opts.now,

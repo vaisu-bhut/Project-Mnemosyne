@@ -4,6 +4,7 @@ import type { Embedder } from "../embeddings/index.js";
 import type { TextGenerator } from "../llm/index.js";
 import { ask } from "../memory/retrieve.js";
 import type { AccessContext } from "../guardian/index.js";
+import { classifyIntent } from "../semantic/index.js";
 import { briefEntity } from "./briefer.js";
 import { relationshipAlerts } from "./people.js";
 
@@ -61,14 +62,28 @@ export async function route(
   userId: string,
   query: string,
   ctx: AccessContext = {},
+  semantic = false,
 ): Promise<RouteResult> {
-  const intent = classify(query);
   const askDeps = {
     db: deps.db,
     embedder: deps.queryEmbedder,
     generator: deps.generator,
     encKey: deps.encKey,
   };
+
+  // Determine intent (+ optional target person) — LLM classifier when enabled,
+  // keyword routing otherwise or on LLM failure.
+  let intent: Intent;
+  let target: string | null = null;
+  if (semantic && deps.generator.available) {
+    try {
+      ({ intent, target } = await classifyIntent(query, deps.generator));
+    } catch {
+      intent = classify(query);
+    }
+  } else {
+    intent = classify(query);
+  }
 
   if (intent === "nudges") {
     return { intent, via: "blackboard", result: await listMind(deps.db, userId, 10) };
@@ -79,13 +94,16 @@ export async function route(
   }
 
   if (intent === "briefing") {
-    for (const name of query.match(PROPER_NOUN) ?? []) {
+    // Prefer the LLM-extracted target; fall back to proper nouns in the query.
+    const names = [target, ...(query.match(PROPER_NOUN) ?? [])].filter(
+      (n): n is string => Boolean(n),
+    );
+    for (const name of names) {
       const entity = await findEntityByName(deps.db, userId, name);
       if (entity) {
         return { intent, via: "briefer", result: await briefEntity(deps, userId, entity.id) };
       }
     }
-    // No known person named — fall back to recall.
     return { intent: "recall", via: "fallback", result: await ask(askDeps, userId, query, 5, ctx) };
   }
 

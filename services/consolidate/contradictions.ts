@@ -1,4 +1,6 @@
 import type { Db } from "../db/index.js";
+import type { TextGenerator } from "../llm/index.js";
+import { proposeContradictions } from "../semantic/index.js";
 import { containmentOverlap, nameTokens, normalizeStatement } from "./util.js";
 
 // Statements whose words are this contained in each other are treated as
@@ -11,6 +13,10 @@ const PARAPHRASE_OVERLAP = 0.8;
 export interface ContradictionOptions {
   /** Predicates that legitimately have many values (don't flag as conflicts). */
   ignorePredicates?: string[];
+  /** When provided, use semantic NLI (embedding + LLM) instead of the lexical rule. */
+  generator?: TextGenerator;
+  similarityThreshold?: number;
+  maxPairs?: number;
 }
 
 export interface ContradictionResult {
@@ -18,17 +24,42 @@ export interface ContradictionResult {
 }
 
 /**
- * Flag conflicting facts. Within a (subject, predicate) group, if multiple
- * active facts assert different statements, the earliest is treated as the
- * incumbent and each differing fact gets `contradicts` pointed at it — surfaced
- * for review rather than auto-retracted. `mentioned`-style predicates are
- * ignored (a subject can be mentioned many times without conflict).
+ * Flag conflicting facts (advisory link via `contradicts`; never auto-retract).
+ *
+ * Semantic mode (generator supplied): pgvector finds related fact pairs per
+ * subject and an LLM classifies each as contradicts / duplicate / unrelated —
+ * catching conflicts across different phrasing and predicates. Falls back to the
+ * lexical rule below on no generator or LLM failure.
+ *
+ * Lexical mode: within a (subject, predicate) group, differing statements (past
+ * a paraphrase guard) link the later fact to the earliest incumbent.
  */
 export async function detectContradictions(
   db: Db,
   userId: string,
   opts: ContradictionOptions = {},
 ): Promise<ContradictionResult> {
+  if (opts.generator) {
+    const proposals = await proposeContradictions(db, userId, {
+      generator: opts.generator,
+      similarityThreshold: opts.similarityThreshold,
+      maxPairs: opts.maxPairs,
+    });
+    // null = LLM failed -> fall through to the lexical rule. A list (even empty)
+    // is the model's judgment, which we trust over the lexical heuristic.
+    if (proposals !== null) {
+      for (const p of proposals) {
+        await db
+          .updateTable("facts")
+          .set({ contradicts: p.contradictsId })
+          .where("id", "=", p.factId)
+          .where("contradicts", "is", null)
+          .execute();
+      }
+      return { linked: proposals.length };
+    }
+  }
+
   const ignore = new Set(opts.ignorePredicates ?? ["mentioned"]);
 
   const facts = await db

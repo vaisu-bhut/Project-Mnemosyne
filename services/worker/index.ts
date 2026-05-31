@@ -88,8 +88,13 @@ const consolidateWorker = new Worker<ConsolidateJob>(
       decayMaxAgeDays: config.DECAY_MAX_AGE_DAYS,
       compressAfterDays: config.RETENTION_COMPRESS_AFTER_DAYS,
       purgeAfterDays: config.RETENTION_PURGE_AFTER_DAYS,
+      entitySimThreshold: config.ENTITY_SIM_THRESHOLD,
+      contradictionSimThreshold: config.CONTRADICTION_SIM_THRESHOLD,
+      maxPairs: config.SEMANTIC_MAX_PAIRS,
     };
-    for (const userId of userIds) await runConsolidation({ db, store }, userId, opts);
+    // Semantic alias-resolution + contradiction NLI when enabled (else lexical).
+    const cdeps = config.SEMANTIC_INTELLIGENCE ? { db, store, generator } : { db, store };
+    for (const userId of userIds) await runConsolidation(cdeps, userId, opts);
     return { users: userIds.length };
   },
   { connection },

@@ -60,6 +60,8 @@ export interface ServerDeps {
   ingestQueue: Queue<IngestJob>;
   consolidateOptions: ConsolidateOptions;
   relationshipStaleDays: number;
+  /** Use semantic (embedding + LLM) consolidation + routing. */
+  semantic?: boolean;
 }
 
 async function probe(fn: () => Promise<unknown>): Promise<boolean> {
@@ -116,7 +118,7 @@ function isPublicPath(path: string): boolean {
 
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: true });
-  const { db, store, redis, config, queryEmbedder, generator, ingestQueue, consolidateOptions, relationshipStaleDays } = deps;
+  const { db, store, redis, config, queryEmbedder, generator, ingestQueue, consolidateOptions, relationshipStaleDays, semantic } = deps;
   const encKey = config.TOKEN_ENC_KEY;
 
   // Authentication guard: populate req.user from the Bearer token; reject
@@ -198,7 +200,8 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   // Run the consolidation ("sleep") pass now for the caller.
   app.post("/consolidate", async (req) => {
-    return runConsolidation({ db, store }, req.user!.id, consolidateOptions);
+    const cdeps = semantic ? { db, store, generator } : { db, store };
+    return runConsolidation(cdeps, req.user!.id, consolidateOptions);
   });
 
   // Forget an episode across all stores (irreversible).
@@ -252,7 +255,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   // The Conductor: route a free-text query to the right agent.
   app.post("/conduct", async (req) => {
     const { query, ...mode } = ConductBody.parse(req.body);
-    return route({ db, queryEmbedder, generator, encKey }, req.user!.id, query, accessContext(mode));
+    return route({ db, queryEmbedder, generator, encKey }, req.user!.id, query, accessContext(mode), semantic);
   });
 
   // Dismiss a blackboard entry.
@@ -301,8 +304,12 @@ export function createServer(config: AppConfig): CreatedServer {
       decayMaxAgeDays: config.DECAY_MAX_AGE_DAYS,
       compressAfterDays: config.RETENTION_COMPRESS_AFTER_DAYS,
       purgeAfterDays: config.RETENTION_PURGE_AFTER_DAYS,
+      entitySimThreshold: config.ENTITY_SIM_THRESHOLD,
+      contradictionSimThreshold: config.CONTRADICTION_SIM_THRESHOLD,
+      maxPairs: config.SEMANTIC_MAX_PAIRS,
     },
     relationshipStaleDays: config.RELATIONSHIP_STALE_DAYS,
+    semantic: config.SEMANTIC_INTELLIGENCE,
   };
   const app = buildServer(deps);
 

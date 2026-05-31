@@ -1,4 +1,6 @@
 import type { Db } from "../db/index.js";
+import type { TextGenerator } from "../llm/index.js";
+import { proposeEntityMerges } from "../semantic/index.js";
 import { isTokenSubset, nameTokens } from "./util.js";
 
 /**
@@ -53,19 +55,27 @@ export interface ResolveEntitiesResult {
   merged: number;
 }
 
+export interface ResolveEntitiesOptions {
+  /** When provided, run a semantic (embedding + LLM) merge pass after lexical. */
+  generator?: TextGenerator;
+  similarityThreshold?: number;
+  maxPairs?: number;
+}
+
 /**
- * Resolve entity aliases. Within a type, if one entity's name tokens are a
- * strict subset of another's ("Sara" ⊂ "Sara Lin"), or they share an exact
- * name/alias, merge the less-specific into the more-specific (tie-break: older
- * survives). Repeats until no more merges.
+ * Resolve entity aliases. First a fast, high-precision **lexical** pass: within
+ * a type, merge when one entity's name tokens are a strict subset of another's
+ * ("Sara" ⊂ "Sara Lin") or they share an exact name/alias (email/phone count).
  *
- * NOTE: heuristic — token-subset can over-merge ambiguous first names
- * ("John" with two different "John X"). Phase-later: use embeddings/LLM to
- * disambiguate. Conservative enough for now; merges are logged by count.
+ * Then, if a generator is supplied, a **semantic** pass: pgvector finds
+ * near-duplicate entities by embedding, and an LLM adjudicates each pair —
+ * catching "Mike" = "Michael Chen" that share no tokens. Falls back cleanly to
+ * lexical-only when no generator is given or the LLM call fails.
  */
 export async function resolveEntities(
   db: Db,
   userId: string,
+  opts: ResolveEntitiesOptions = {},
 ): Promise<ResolveEntitiesResult> {
   let merged = 0;
 
@@ -108,6 +118,19 @@ export async function resolveEntities(
     if (!pair) break;
     await mergeEntities(db, pair.survivor, pair.dupe);
     merged++;
+  }
+
+  // Semantic pass: meaning-based merges the lexical rules can't see.
+  if (opts.generator) {
+    const proposals = await proposeEntityMerges(db, userId, {
+      generator: opts.generator,
+      similarityThreshold: opts.similarityThreshold,
+      maxPairs: opts.maxPairs,
+    });
+    for (const p of proposals) {
+      await mergeEntities(db, p.survivorId, p.dupeId);
+      merged++;
+    }
   }
 
   return { merged };

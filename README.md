@@ -236,9 +236,29 @@ curl -X POST localhost:3000/blackboard/<id>/dismiss -d '{}' -H "content-type: ap
   the blackboard (also runs on `NUDGER_INTERVAL_MS`).
 - **Briefer** — pre-meeting briefings: identity, recent interactions, open
   threads, recent facts, and suggested questions.
-- **Conductor** — keyword intent routing (an LLM classifier is the planned
-  upgrade). Agents coordinate only via the Conductor and the blackboard, so the
-  flow stays observable and stoppable.
+- **Conductor** — routes by intent. Lexical keyword routing by default; with
+  `SEMANTIC_INTELLIGENCE=true` an LLM classifies intent (and extracts the target
+  person) even without trigger words, falling back to keywords on failure.
+  Agents coordinate only via the Conductor and the blackboard, so the flow stays
+  observable and stoppable.
+
+### Semantic intelligence (optional, `SEMANTIC_INTELLIGENCE=true`)
+
+By default the three "judgement" subsystems are **lexical** — fast, free, and
+deterministic. Flip `SEMANTIC_INTELLIGENCE=true` (with `LLM_PROVIDER=gemini`) to
+upgrade them to **embedding candidate-generation + LLM adjudication**:
+
+- **Alias resolution** — pgvector finds near-duplicate entities by embedding; an
+  LLM confirms each pair. Catches `Mike` = `Michael Chen` (no shared tokens) that
+  the lexical pass can't. The lexical pass still runs first (high-precision,
+  free); semantic is additive.
+- **Contradiction detection** — pgvector finds related fact pairs per subject; an
+  LLM classifies each as contradicts / duplicate / unrelated (NLI across
+  different phrasing and predicates). Links stay **advisory** (never auto-retract).
+- **Conductor routing** — LLM intent classifier (see above).
+
+All three fall back to the lexical path on any LLM error, so consolidation never
+breaks. Candidate generation is capped (`SEMANTIC_MAX_PAIRS`) for cost control.
 
 ## Privacy compartments (the Guardian)
 
