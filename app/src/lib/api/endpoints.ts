@@ -44,7 +44,9 @@ export const authApi = {
   logout: (refreshToken: string) =>
     request<void>("/auth/logout", { method: "POST", body: { refreshToken } }),
   me: () => request<{ user: AuthUser }>("/auth/me"),
-  googleUrl: () => request<{ url: string }>("/auth/google/url"),
+  // mode=web => the callback redirects back to the SPA with the token pair in
+  // the URL fragment (see app/auth/google/callback), rather than returning JSON.
+  googleUrl: () => request<{ url: string }>("/auth/google/url", { query: { mode: "web" } }),
 };
 
 // /sources returns raw DB rows (snake_case) — camelize into Source.

@@ -32,20 +32,43 @@ export async function verifyAccessToken(
   return { userId: String(payload.sub), email: String(payload.email ?? "") };
 }
 
-/** Sign a short-lived state token for the OAuth CSRF nonce. */
-export async function signState(secret: string, nonce: string): Promise<string> {
-  return new SignJWT({ nonce })
+/**
+ * How the OAuth callback should hand the issued token pair back to the client:
+ *   - "json" — return it in the JSON body (native/mobile flow; the default)
+ *   - "web"  — 302-redirect the browser to the web app's callback route
+ */
+export type OAuthMode = "json" | "web";
+
+export interface StateClaims {
+  nonce: string;
+  mode: OAuthMode;
+}
+
+/** Sign a short-lived state token carrying the OAuth CSRF nonce + client mode. */
+export async function signState(
+  secret: string,
+  nonce: string,
+  mode: OAuthMode = "json",
+): Promise<string> {
+  return new SignJWT({ nonce, mode })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("10m")
     .sign(key(secret));
 }
 
-export async function verifyState(secret: string, token: string): Promise<boolean> {
+/** Verify a state token; returns its claims, or null if invalid/expired. */
+export async function verifyState(
+  secret: string,
+  token: string,
+): Promise<StateClaims | null> {
   try {
-    await jwtVerify(token, key(secret));
-    return true;
+    const { payload } = await jwtVerify(token, key(secret));
+    return {
+      nonce: String(payload.nonce ?? ""),
+      mode: payload.mode === "web" ? "web" : "json",
+    };
   } catch {
-    return false;
+    return null;
   }
 }

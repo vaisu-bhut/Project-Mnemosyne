@@ -182,8 +182,8 @@ server replies `401 {error:"authentication required"}` otherwise).
 | POST | `/auth/refresh` | `{refreshToken}` | `{user, accessToken, refreshToken}` (rotates: old token invalidated); `401` |
 | POST | `/auth/logout` | `{refreshToken}` | `204` |
 | GET | `/auth/me` | – (Bearer) | `{user:{id,email,displayName}}`; `401` |
-| GET | `/auth/google/url` | – | `{url}` — open in browser to start OAuth |
-| GET | `/auth/google/callback` | `?code&state` | `{user, accessToken, refreshToken}` (also stores encrypted Gmail/Calendar tokens) |
+| GET | `/auth/google/url` | `?mode=web?` | `{url}` — open in browser to start OAuth. `mode=web` makes the callback redirect to the web app; else JSON |
+| GET | `/auth/google/callback` | `?code&state` | stores encrypted Gmail/Calendar tokens, then: **web** → `302` to `${WEB_ORIGIN}/auth/google/callback#accessToken=…&refreshToken=…`; **json** → `{user, accessToken, refreshToken}` |
 
 **Token model (mobile/web):** access token is a short-lived JWT (`15m`) sent as
 `Authorization: Bearer`. Refresh token is opaque (`30d`), only its hash stored;

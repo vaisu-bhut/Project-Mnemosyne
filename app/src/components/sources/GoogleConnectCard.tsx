@@ -16,11 +16,11 @@ export function GoogleConnectCard() {
     setLoading(true);
     try {
       const { url } = await authApi.googleUrl();
-      window.open(url, "_blank", "noopener");
-      toast.info("Complete Google sign-in in the new tab, then add a Gmail/Calendar source.");
+      // Same-tab navigation: after consent the backend hands off to the SPA
+      // callback, which captures the tokens and lands us back in the app.
+      window.location.href = url;
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't start Google connect");
-    } finally {
       setLoading(false);
     }
   }
@@ -32,9 +32,9 @@ export function GoogleConnectCard() {
           <Link2 className="size-4" /> Connect Google
         </CardTitle>
         <CardDescription>
-          Required for Gmail, Calendar, and Contacts sources. The OAuth callback
-          currently returns tokens as JSON (mobile-shaped) — a web hand-off is a
-          pending backend item, so the filesystem source is the no-OAuth path.
+          Required for Gmail, Calendar, and Contacts sources. Sends you to Google
+          to approve access, then returns you here signed in — after which you can
+          add a Gmail, Calendar, or Contacts source.
         </CardDescription>
       </CardHeader>
       <CardContent>

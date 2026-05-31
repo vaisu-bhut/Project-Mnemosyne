@@ -72,10 +72,23 @@ corepack pnpm -C app dev             # frontend         :3001
 - **Citations** — every fact/episode/answer links to its source episode via the
   app-wide `EpisodeDrawer` ("verify on click").
 
+## Google OAuth (web hand-off)
+
+"Connect Google" (on **Sources**) requests `/auth/google/url?mode=web` and
+navigates to the consent screen. Google returns to the **backend** callback
+(`GOOGLE_REDIRECT_URI`), which exchanges the code, stores the encrypted
+Gmail/Calendar/Contacts tokens, then **302-redirects the browser** to this app's
+[`/auth/google/callback`](src/app/auth/google/callback/page.tsx) with the issued
+token pair in the URL **fragment** (`#accessToken=…&refreshToken=…`, so it's
+never logged server-side). That page reads the fragment, adopts the session
+(`AuthProvider.adoptSession`), strips the hash, and lands on the authenticated
+home — after which Gmail/Calendar/Contacts sources can be added.
+
+Requires `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` and a concrete `WEB_ORIGIN`
+on the backend (the hand-off target). Native/mobile clients omit `mode=web` and
+get the token pair as JSON instead.
+
 ## Known gaps (coordinate with backend)
 
-- **Google web OAuth**: `/auth/google/callback` returns tokens as JSON
-  (mobile-shaped). Until the backend redirects to a web callback with the token
-  pair, the **filesystem** connector is the no-OAuth path.
 - **No job-status endpoint**: ingestion shows an optimistic "Ingesting" badge,
   then results appear in Search (poll-free).

@@ -16,6 +16,7 @@ import {
 import { encryptToken, sha256Hex } from "./crypto.js";
 import {
   buildGoogleAuthUrl,
+  buildWebHandoffUrl,
   exchangeCodeForTokens,
   fetchGoogleProfile,
 } from "./google.js";
@@ -142,8 +143,15 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
   });
 
   // --- Google OAuth (login + Gmail access) ---
-  app.get("/auth/google/url", async () => {
-    const state = await signState(config.JWT_SECRET, randomBytes(16).toString("hex"));
+  // `mode=web` makes the callback redirect the browser back to the web app with
+  // the token pair (so a browser can capture them); anything else => JSON.
+  app.get<{ Querystring: { mode?: string } }>("/auth/google/url", async (req) => {
+    const mode = req.query.mode === "web" ? "web" : "json";
+    const state = await signState(
+      config.JWT_SECRET,
+      randomBytes(16).toString("hex"),
+      mode,
+    );
     return { url: buildGoogleAuthUrl(config, state) };
   });
 
@@ -151,7 +159,8 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
     "/auth/google/callback",
     async (req, reply) => {
       const { code, state } = req.query;
-      if (!code || !state || !(await verifyState(config.JWT_SECRET, state))) {
+      const claims = state ? await verifyState(config.JWT_SECRET, state) : null;
+      if (!code || !claims) {
         reply.code(400);
         return { error: "invalid oauth callback (missing/expired state or code)" };
       }
@@ -176,9 +185,17 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
         scope: tokens.scope ?? null,
       });
 
-      // Mobile flow: return the token pair as JSON. (A native app would receive
-      // this via a custom-scheme redirect; documented in the README.)
-      return { user: publicUser(user), ...(await issueTokens(deps, user)) };
+      const issued = await issueTokens(deps, user);
+
+      // Web flow: 302 back to the SPA callback with the token pair in the URL
+      // fragment (kept out of server logs / Referer; read client-side).
+      if (claims.mode === "web") {
+        return reply.redirect(buildWebHandoffUrl(config.WEB_ORIGIN, issued), 302);
+      }
+
+      // Native/mobile flow: return the token pair as JSON. (A native app would
+      // receive this via a custom-scheme redirect; documented in the README.)
+      return { user: publicUser(user), ...issued };
     },
   );
 }

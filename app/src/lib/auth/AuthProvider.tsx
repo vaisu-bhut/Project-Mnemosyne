@@ -27,6 +27,9 @@ interface AuthState {
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
+  /** Adopt an externally-issued token pair (e.g. the Google web OAuth
+   * hand-off), then confirm identity via /auth/me. */
+  adoptSession: (tokens: { accessToken: string; refreshToken: string }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -88,6 +91,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("authenticated");
   }, []);
 
+  const adoptSession = useCallback(
+    async (tokens: { accessToken: string; refreshToken: string }) => {
+      setSession(tokens);
+      const { user: me } = await authApi.me();
+      setUser(me);
+      setStatus("authenticated");
+    },
+    [],
+  );
+
   const logout = useCallback(async () => {
     const refreshToken = getRefreshToken();
     if (refreshToken) {
@@ -103,8 +116,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthState>(
-    () => ({ user, status, login, register, logout }),
-    [user, status, login, register, logout],
+    () => ({ user, status, login, register, logout, adoptSession }),
+    [user, status, login, register, logout, adoptSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -34,6 +34,33 @@ function requireClient(config: GoogleConfig): { id: string; secret: string } {
   return { id: config.GOOGLE_CLIENT_ID, secret: config.GOOGLE_CLIENT_SECRET };
 }
 
+/**
+ * Build the web hand-off URL: the SPA's OAuth callback route with the issued
+ * token pair in the URL **fragment** (`#…`). The fragment is never sent to a
+ * server and never appears in access logs / `Referer` headers, so the tokens
+ * stay client-side; the SPA reads them with `location.hash`.
+ *
+ * `webOrigin` is the (possibly comma-separated) WEB_ORIGIN config; the first
+ * concrete origin is used. Throws if it is unset or `"*"` — a wildcard can't be
+ * a redirect target, so the web flow needs a real origin configured.
+ */
+export function buildWebHandoffUrl(
+  webOrigin: string,
+  tokens: { accessToken: string; refreshToken: string },
+): string {
+  const origin = webOrigin.split(",")[0]?.trim().replace(/\/+$/, "") ?? "";
+  if (!origin || origin === "*") {
+    throw new Error(
+      "Web OAuth hand-off requires a concrete WEB_ORIGIN (not empty or '*')",
+    );
+  }
+  const fragment = new URLSearchParams({
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+  }).toString();
+  return `${origin}/auth/google/callback#${fragment}`;
+}
+
 /** Build the consent URL. `state` is a signed CSRF nonce. */
 export function buildGoogleAuthUrl(config: GoogleConfig, state: string): string {
   const { id } = requireClient(config);
