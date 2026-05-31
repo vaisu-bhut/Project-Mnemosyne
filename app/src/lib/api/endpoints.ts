@@ -1,10 +1,14 @@
 import { request } from "./client";
 import { camelize } from "./casing";
 import type {
+  Answer,
   AuthResponse,
   AuthUser,
   ClassifySourceInput,
   CreateSourceInput,
+  RetentionInput,
+  RetrieveInput,
+  SearchResult,
   Source,
 } from "./types";
 
@@ -42,4 +46,18 @@ export const sourcesApi = {
       method: "POST",
       body: {},
     }),
+};
+
+export const memoryApi = {
+  search: (query: string, opts: RetrieveInput = {}) =>
+    request<SearchResult>("/search", { method: "POST", body: { query, ...opts } }),
+  ask: (question: string, opts: RetrieveInput = {}) =>
+    request<Answer>("/ask", { method: "POST", body: { question, ...opts } }),
+  forget: (episodeId: string) =>
+    request<{ artifactDeleted: boolean }>(`/episodes/${episodeId}/forget`, {
+      method: "POST",
+      body: {},
+    }),
+  setRetention: ({ episodeId, ...policy }: RetentionInput) =>
+    request<void>("/retention", { method: "POST", body: { episodeId, ...policy } }),
 };
