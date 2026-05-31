@@ -16,3 +16,30 @@ export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
 }
+
+export type SourceKind = "filesystem" | "gmail" | "gcal" | "gcontacts";
+
+/** A connector/source. Raw DB row (snake_case) camelized client-side. */
+export interface Source {
+  id: string;
+  userId: string;
+  kind: SourceKind;
+  displayName: string;
+  scope: string;
+  sensitive: boolean;
+  config: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface CreateSourceInput {
+  kind: SourceKind;
+  displayName: string;
+  scope?: string;
+  sensitive?: boolean;
+  config?: Record<string, unknown>;
+}
+
+export interface ClassifySourceInput {
+  scope?: string;
+  sensitive?: boolean;
+}

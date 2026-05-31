@@ -1,5 +1,12 @@
 import { request } from "./client";
-import type { AuthResponse, AuthUser } from "./types";
+import { camelize } from "./casing";
+import type {
+  AuthResponse,
+  AuthUser,
+  ClassifySourceInput,
+  CreateSourceInput,
+  Source,
+} from "./types";
 
 export interface RegisterInput {
   email: string;
@@ -21,4 +28,18 @@ export const authApi = {
     request<void>("/auth/logout", { method: "POST", body: { refreshToken } }),
   me: () => request<{ user: AuthUser }>("/auth/me"),
   googleUrl: () => request<{ url: string }>("/auth/google/url"),
+};
+
+// /sources returns raw DB rows (snake_case) — camelize into Source.
+export const sourcesApi = {
+  list: async (): Promise<Source[]> => camelize<Source[]>(await request("/sources")),
+  create: async (input: CreateSourceInput): Promise<Source> =>
+    camelize<Source>(await request("/sources", { method: "POST", body: input })),
+  classify: async (id: string, input: ClassifySourceInput): Promise<Source> =>
+    camelize<Source>(await request(`/sources/${id}`, { method: "PATCH", body: input })),
+  ingest: (id: string) =>
+    request<{ jobId: string; sourceId: string }>(`/sources/${id}/ingest`, {
+      method: "POST",
+      body: {},
+    }),
 };
