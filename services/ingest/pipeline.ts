@@ -264,19 +264,28 @@ export async function connectorForSource(
     return createFilesystemConnector({ dir });
   }
 
-  if (source.kind === "gmail") {
-    // Use the owner's Google tokens (refreshed if needed) to read Gmail.
+  if (source.kind === "gmail" || source.kind === "gcal") {
+    // Use the owner's Google tokens (refreshed if needed).
     const { getValidGoogleAccessToken } = await import("../auth/google.js");
     const accessToken = await getValidGoogleAccessToken(
       deps.db,
       deps.config,
       source.user_id,
     );
-    const { createGmailConnector } = await import("./gmail.js");
-    return createGmailConnector({
+    if (source.kind === "gmail") {
+      const { createGmailConnector } = await import("./gmail.js");
+      return createGmailConnector({
+        accessToken,
+        query: deps.config.GMAIL_QUERY,
+        maxMessages: deps.config.GMAIL_MAX_MESSAGES,
+      });
+    }
+    const { createCalendarConnector } = await import("./gcal.js");
+    return createCalendarConnector({
       accessToken,
-      query: deps.config.GMAIL_QUERY,
-      maxMessages: deps.config.GMAIL_MAX_MESSAGES,
+      daysPast: deps.config.CALENDAR_DAYS_PAST,
+      daysFuture: deps.config.CALENDAR_DAYS_FUTURE,
+      maxEvents: deps.config.CALENDAR_MAX_EVENTS,
     });
   }
 

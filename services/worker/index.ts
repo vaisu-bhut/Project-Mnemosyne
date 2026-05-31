@@ -13,7 +13,7 @@ import {
   runIngest,
 } from "../ingest/pipeline.js";
 import { runConsolidation } from "../consolidate/index.js";
-import { runNudger } from "../agents/index.js";
+import { runNudger, upcomingBriefings } from "../agents/index.js";
 import {
   QUEUES,
   type ConsolidateJob,
@@ -52,7 +52,7 @@ const ingestWorker = new Worker<IngestJob>(
     } catch (err) {
       // OAuth-backed sources can lose access (revoked/expired). Flag the source
       // so the user can re-connect, and fail the job for retry/visibility.
-      if (source.kind === "gmail") {
+      if (source.kind === "gmail" || source.kind === "gcal") {
         await updateSourceConfig(db, source.id, {
           ...(source.config as Record<string, unknown>),
           needsReauth: true,
@@ -98,6 +98,10 @@ const nudgeWorker = new Worker<NudgeJob>(
     const userIds = job.data.userId ? [job.data.userId] : await listUserIds(db);
     for (const userId of userIds) {
       await runNudger(db, userId, { staleDays: config.RELATIONSHIP_STALE_DAYS });
+      await upcomingBriefings({ db, generator }, userId, {
+        withinHours: config.BRIEFING_LOOKAHEAD_HOURS,
+        post: true,
+      });
     }
     return { users: userIds.length };
   },

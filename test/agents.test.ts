@@ -17,6 +17,7 @@ import {
   relationshipHealth,
   route,
   runNudger,
+  upcomingBriefings,
 } from "../services/agents/index.js";
 import { devConfig, seedUser, testDb, truncateAll } from "./helpers.js";
 
@@ -103,6 +104,34 @@ describe("Briefer", () => {
     expect(brief.recentFacts.some((f) => f.statement.includes("marathon"))).toBe(true);
     expect(brief.openThreads).toHaveLength(1);
     expect(brief.suggestedQuestions.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Briefer — time-triggered (calendar)", () => {
+  it("briefs attendees of upcoming calendar events and posts to the blackboard", async () => {
+    const source = await createSource(db, { userId, kind: "gcal", displayName: "Calendar" });
+    const sara = await upsertEntity(db, { userId, type: "person", canonicalName: "Sara Lin" });
+
+    // An upcoming event (2h out) with Sara as an attendee.
+    const start = new Date(Date.now() + 2 * 3_600_000);
+    const ev = await insertEpisode(db, {
+      userId,
+      occurredAt: start,
+      sourceId: source.id,
+      externalId: "ev1",
+      kind: "calendar_event",
+      title: "1:1 with Sara",
+    });
+    await insertEdge(db, { userId, srcId: sara.id, dstId: ev.id, rel: "mentioned_in" });
+    const factEp = await insertEpisode(db, { userId, occurredAt: daysAgo(3), sourceId: source.id, externalId: "p", kind: "note" });
+    await insertFact(db, { userId, subjectId: sara.id, statement: "Sara is training for a marathon.", sourceEpisode: factEp.id, sourceId: source.id });
+
+    const briefings = await upcomingBriefings({ db, generator }, userId, { withinHours: 24, post: true });
+    expect(briefings).toHaveLength(1);
+    expect(briefings[0]!.briefing.name).toBe("Sara Lin");
+
+    const mind = await listMind(db, userId, 10);
+    expect(mind.some((m) => m.kind === "briefing" && m.title.includes("1:1 with Sara"))).toBe(true);
   });
 });
 

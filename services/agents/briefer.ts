@@ -1,5 +1,5 @@
 import { sql } from "kysely";
-import type { Db } from "../db/index.js";
+import { clearAgentEntries, writeBlackboard, type Db } from "../db/index.js";
 import type { TextGenerator } from "../llm/index.js";
 import { relationshipHealth, type OpenThread } from "./people.js";
 
@@ -107,6 +107,73 @@ export async function briefEntity(
     recentFacts,
     suggestedQuestions,
   };
+}
+
+export interface UpcomingBriefing {
+  eventId: string;
+  eventTitle: string | null;
+  eventStart: Date;
+  briefing: Briefing;
+}
+
+/**
+ * Time-triggered pre-meeting briefings. Finds upcoming `calendar_event`
+ * episodes within `withinHours`, and for each attendee (a linked person)
+ * assembles a briefing. With `post`, writes each to the blackboard as a salient
+ * "briefing" entry that expires when the meeting starts — the dossier's
+ * auto-generated pre-meeting brief.
+ */
+export async function upcomingBriefings(
+  deps: BrieferDeps,
+  userId: string,
+  opts: { withinHours?: number; now?: Date; post?: boolean } = {},
+): Promise<UpcomingBriefing[]> {
+  const now = opts.now ?? new Date();
+  const until = new Date(now.getTime() + (opts.withinHours ?? 24) * 3_600_000);
+
+  const events = await deps.db
+    .selectFrom("episodes")
+    .select(["id", "title", "occurred_at"])
+    .where("user_id", "=", userId)
+    .where("kind", "=", "calendar_event")
+    .where("occurred_at", ">=", now)
+    .where("occurred_at", "<=", until)
+    .orderBy("occurred_at", "asc")
+    .execute();
+
+  if (opts.post) await clearAgentEntries(deps.db, userId, "briefer");
+
+  const out: UpcomingBriefing[] = [];
+  for (const ev of events) {
+    const attendees = await deps.db
+      .selectFrom("edges")
+      .innerJoin("entities", "entities.id", "edges.src_id")
+      .select(["entities.id as id", "entities.canonical_name as name"])
+      .where("edges.user_id", "=", userId)
+      .where("edges.dst_id", "=", ev.id)
+      .where("edges.rel", "=", "mentioned_in")
+      .where("entities.type", "=", "person")
+      .execute();
+
+    for (const a of attendees) {
+      const briefing = await briefEntity(deps, userId, a.id, now);
+      out.push({ eventId: ev.id, eventTitle: ev.title, eventStart: ev.occurred_at, briefing });
+      if (opts.post) {
+        await writeBlackboard(deps.db, {
+          userId,
+          kind: "briefing",
+          agent: "briefer",
+          title: `Prep for "${ev.title}" with ${a.name}`,
+          body: briefing.suggestedQuestions.map((q) => `• ${q}`).join("\n"),
+          entityId: a.id,
+          salience: 0.85,
+          payload: { eventId: ev.id, eventTitle: ev.title, eventStart: ev.occurred_at },
+          expiresAt: ev.occurred_at,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 async function suggestQuestions(

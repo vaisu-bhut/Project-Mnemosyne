@@ -18,6 +18,7 @@ import {
   relationshipHealthAll,
   route,
   runNudger,
+  upcomingBriefings,
 } from "../agents/index.js";
 import { createQueryEmbedder, type Embedder } from "../embeddings/index.js";
 import { createGenerator, type TextGenerator } from "../llm/index.js";
@@ -202,6 +203,12 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   // Pre-meeting briefing for a person.
   app.get<{ Params: { id: string } }>("/people/:id/brief", async (req) => {
     return briefEntity({ db, generator }, req.user!.id, req.params.id);
+  });
+
+  // Time-triggered pre-meeting briefings for upcoming calendar events.
+  app.get<{ Querystring: { hours?: string } }>("/briefings/upcoming", async (req) => {
+    const withinHours = req.query.hours ? Number(req.query.hours) : 24;
+    return upcomingBriefings({ db, generator }, req.user!.id, { withinHours });
   });
 
   // The Conductor: route a free-text query to the right agent.

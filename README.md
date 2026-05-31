@@ -133,6 +133,20 @@ strong identity alias) linked to each email, bodies are cleaned (HTML→text,
 quoted replies/signatures stripped), and attachments are stored to the artifact
 store. A revoked/expired token flags the source `needsReauth`.
 
+A **Calendar** source (`kind: "gcal"`, same Google login) reuses the same seam:
+events sync incrementally (Calendar `syncToken`, 410 → window resync), and
+attendees become linked person entities. That powers **time-triggered
+pre-meeting briefings** — the worker's proactive pass writes a briefing to the
+blackboard for each attendee of an upcoming event, and `GET /briefings/upcoming`
+returns them on demand:
+
+```powershell
+curl -X POST localhost:3000/sources -H "authorization: Bearer <t>" `
+  -H "content-type: application/json" -d '{"kind":"gcal","displayName":"Calendar"}'
+curl -X POST localhost:3000/sources/<id>/ingest -H "authorization: Bearer <t>" -d '{}'
+curl "localhost:3000/briefings/upcoming?hours=24" -H "authorization: Bearer <t>"
+```
+
 ## The memory pipeline (ingest → extract → retrieve)
 
 With both `pnpm api` and `pnpm worker` running (all routes need `-H "authorization: Bearer <token>"`):

@@ -10,12 +10,13 @@ const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 
-// openid+email+profile for identity; gmail.readonly so the connector can ingest.
+// openid+email+profile for identity; gmail + calendar readonly for ingestion.
 const SCOPES = [
   "openid",
   "email",
   "profile",
   "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/calendar.readonly",
 ];
 
 type GoogleConfig = Pick<

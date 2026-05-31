@@ -74,6 +74,12 @@ const EnvSchema = z.object({
     .default("http://localhost:3000/auth/google/callback"),
   GMAIL_MAX_MESSAGES: z.coerce.number().int().positive().default(25),
   GMAIL_QUERY: z.string().default("newer_than:30d"),
+  // Calendar ingestion window (days back / forward) and per-run cap.
+  CALENDAR_DAYS_PAST: z.coerce.number().int().min(0).default(7),
+  CALENDAR_DAYS_FUTURE: z.coerce.number().int().min(0).default(30),
+  CALENDAR_MAX_EVENTS: z.coerce.number().int().positive().default(50),
+  // Look-ahead window for time-triggered pre-meeting briefings (hours).
+  BRIEFING_LOOKAHEAD_HOURS: z.coerce.number().int().positive().default(24),
 
   API_HOST: z.string().default("0.0.0.0"),
   API_PORT: z.coerce.number().int().positive().default(3000),
