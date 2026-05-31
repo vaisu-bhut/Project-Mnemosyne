@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "kysely";
-import { createSource, insertEpisode } from "../services/db/index.js";
+import { createSource, insertEpisode } from "../db/index.js";
 import { seedUser, testDb, truncateAll } from "./helpers.js";
 
 const db = testDb();

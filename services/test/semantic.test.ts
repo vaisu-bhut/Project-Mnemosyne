@@ -1,10 +1,10 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { createSource, upsertEntity, type Source } from "../services/db/index.js";
-import { createEmbedder, createQueryEmbedder } from "../services/embeddings/index.js";
-import type { TextGenerator } from "../services/llm/index.js";
-import { recordEntity, recordEpisode, recordFact } from "../services/memory/encode.js";
-import { detectContradictions, resolveEntities } from "../services/consolidate/index.js";
-import { route } from "../services/agents/index.js";
+import { createSource, upsertEntity, type Source } from "../db/index.js";
+import { createEmbedder, createQueryEmbedder } from "../embeddings/index.js";
+import type { TextGenerator } from "../llm/index.js";
+import { recordEntity, recordEpisode, recordFact } from "../memory/encode.js";
+import { detectContradictions, resolveEntities } from "../consolidate/index.js";
+import { route } from "../agents/index.js";
 import { devConfig, seedUser, testDb, truncateAll } from "./helpers.js";
 
 const db = testDb();

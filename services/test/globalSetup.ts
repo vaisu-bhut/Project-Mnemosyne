@@ -1,6 +1,6 @@
 import { config as loadEnv } from "dotenv";
 import pg from "pg";
-import { resetSchema } from "../services/db/schema.js";
+import { resetSchema } from "../db/schema.js";
 
 /**
  * Vitest global setup. Runs once before the suite:

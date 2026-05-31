@@ -4,7 +4,7 @@ import {
   parseAddressList,
   participantsFromHeaders,
   stripQuoted,
-} from "../services/ingest/emailText.js";
+} from "../ingest/emailText.js";
 
 describe("parseAddressList", () => {
   it("parses names and bare emails, lowercasing addresses", () => {

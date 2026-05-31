@@ -8,9 +8,9 @@ import {
   listMind,
   upsertEntity,
   type Source,
-} from "../services/db/index.js";
-import { createQueryEmbedder } from "../services/embeddings/index.js";
-import { createGenerator } from "../services/llm/index.js";
+} from "../db/index.js";
+import { createQueryEmbedder } from "../embeddings/index.js";
+import { createGenerator } from "../llm/index.js";
 import {
   briefEntity,
   relationshipAlerts,
@@ -18,7 +18,7 @@ import {
   route,
   runNudger,
   upcomingBriefings,
-} from "../services/agents/index.js";
+} from "../agents/index.js";
 import { devConfig, seedUser, testDb, truncateAll } from "./helpers.js";
 
 const db = testDb();

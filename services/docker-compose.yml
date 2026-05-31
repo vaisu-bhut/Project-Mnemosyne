@@ -3,6 +3,8 @@
 # `docker compose up --wait` blocks until they're ready to serve.
 # Artifacts are stored on the local filesystem (LOCAL_STORAGE_DIR), so there's
 # no object-storage container yet.
+# Fixed project name so the stack is stable regardless of the compose file's dir.
+name: mnemosyne
 services:
   postgres:
     image: pgvector/pgvector:pg16

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createExtractor } from "../services/extract/index.js";
-import { createGenerator } from "../services/llm/index.js";
+import { createExtractor } from "../extract/index.js";
+import { createGenerator } from "../llm/index.js";
 import { devConfig } from "./helpers.js";
 
 const extractor = createExtractor(devConfig, createGenerator(devConfig));

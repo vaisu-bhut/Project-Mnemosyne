@@ -11,12 +11,12 @@
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",
     "infra:logs": "docker compose logs -f",
-    "db:reset": "tsx services/db/reset.ts",
+    "db:reset": "tsx db/reset.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "api": "tsx watch services/api/index.ts",
-    "worker": "tsx watch services/worker/index.ts"
+    "api": "tsx watch api/index.ts",
+    "worker": "tsx watch worker/index.ts"
   },
   "dependencies": {
     "bullmq": "^5.34.5",

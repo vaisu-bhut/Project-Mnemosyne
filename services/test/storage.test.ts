@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createArtifactStore, type ArtifactStore } from "../services/storage/index.js";
+import { createArtifactStore, type ArtifactStore } from "../storage/index.js";
 
 let dir: string;
 let store: ArtifactStore;

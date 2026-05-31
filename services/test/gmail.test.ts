@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createGmailConnector } from "../services/ingest/gmail.js";
+import { createGmailConnector } from "../ingest/gmail.js";
 
 function ok(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body, text: async () => "" } as unknown as Response;

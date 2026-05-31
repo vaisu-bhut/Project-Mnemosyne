@@ -20,30 +20,23 @@ integration tests against. Ingestion, agents, MCP, and the frontend come later.
 
 ## Layout
 
-A single package. Code lives under `services/`; deployables that genuinely run
-on their own (MCP servers, scheduled jobs) will get their own packages later.
+The repo holds two self-contained packages: **`services/`** (this backend, with
+its own `package.json`/`node_modules`/`.env`) and **`app/`** (the frontend, to
+come). All backend work happens inside `services/`. See **[BACKEND.md](BACKEND.md)**
+for the full API/data-model reference.
 
 ```
 Project-Mnemosyne/
-  docker-compose.yml        # postgres (pgvector) + redis
-  .env.example
-  services/
-    config/                 # env loading (Zod) + the VECTOR_DIM constant
-    auth/                    # password (scrypt), JWT (jose), token crypto, Google OAuth
-    storage/                # local-filesystem artifact store (S3-shaped API)
-    embeddings/             # text -> vector (dev / Gemini / Qwen)
-    llm/                    # text generation (dev / Gemini) for extract + answers
-    db/                     # schema.ts, Kysely types, client, repositories
-    extract/                # entities / facts / open-loops extraction (dev / Gemini)
-    ingest/                 # connector contract + filesystem + gmail connectors + pipeline
-    memory/                 # encode (embed-on-write) + retrieve (cited search / ask)
-    consolidate/            # the "sleep" pass: dedup, alias-merge, decay, retention, forget
-    agents/                 # People, Nudger, Briefer, Conductor (the agent mesh)
-    queue/                  # BullMQ queue + job-type definitions
-    api/                    # Fastify server + routes (JWT-guarded)
-    worker/                 # BullMQ workers: ingest, extract, consolidate, nudge, healthcheck
-  examples/journal/         # sample notes for the filesystem connector
-  test/                     # Vitest integration tests (real Postgres)
+  services/                 # ← the backend package (cd here for everything below)
+    package.json  node_modules  tsconfig.json  vitest.config.ts
+    docker-compose.yml      # postgres (pgvector) + redis  (compose project: "mnemosyne")
+    .env / .env.example
+    config/  auth/  db/  storage/  embeddings/  llm/  extract/  ingest/
+    memory/  consolidate/  semantic/  agents/  guardian/  queue/  api/  worker/
+    examples/journal/       # sample notes for the filesystem connector
+    test/                   # Vitest integration tests (real Postgres)
+  app/                      # ← the frontend package (to be created)
+  BACKEND.md  README.md  LICENSE
 ```
 
 The database schema lives in `services/db/schema.ts` as one declarative file.
@@ -67,6 +60,8 @@ consolidation are user-scoped, and every API route (except `/health` and
 ## Run it
 
 ```powershell
+cd services                   # the backend package root
+
 # 1. Configure (defaults match docker-compose.yml)
 copy .env.example .env
 

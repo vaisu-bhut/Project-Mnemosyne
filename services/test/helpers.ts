@@ -1,5 +1,5 @@
 import { sql } from "kysely";
-import { createDb, createUser, type Db } from "../services/db/index.js";
+import { createDb, createUser, type Db } from "../db/index.js";
 
 export const DIM = Number(process.env.VECTOR_DIM ?? 1024);
 
@@ -13,6 +13,9 @@ export const devConfig = {
   VECTOR_DIM: DIM,
   LLM_PROVIDER: "dev",
   LLM_MODEL: "dev",
+  QWEN_API_KEY: undefined,
+  QWEN_MODEL: "dev",
+  QWEN_BASE_URL: "https://example.invalid/v1",
 } as const;
 
 /** Build a DIM-length embedding with `value` placed at `hotIndex`. */

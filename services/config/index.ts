@@ -40,11 +40,20 @@ const EnvSchema = z.object({
   // RETRIEVAL_QUERY for search queries). Improves retrieval quality.
   EMBEDDING_TASK_TYPE: z.string().default("RETRIEVAL_DOCUMENT"),
 
-  // --- Generative LLM (extraction + grounded answers) ---
+  // --- Generative LLM (extraction + grounded answers + semantic adjudication) ---
   // "dev"    = deterministic offline stand-in (heuristics; no network).
-  // "gemini" = Gemini generateContent, reusing EMBEDDING_API_KEY (same AI Studio key).
-  LLM_PROVIDER: z.enum(["dev", "gemini"]).default("dev"),
+  // "qwen"   = Qwen chat via DashScope's OpenAI-compatible endpoint (QWEN_API_KEY).
+  // "gemini" = Gemini generateContent, reusing EMBEDDING_API_KEY.
+  // NOTE: Gemini is used for EMBEDDINGS; Qwen is the default generative LLM.
+  LLM_PROVIDER: z.enum(["dev", "qwen", "gemini"]).default("dev"),
   LLM_MODEL: z.string().default("gemini-2.5-flash"),
+  // Qwen (DashScope OpenAI-compatible). Key is separate from the Gemini key.
+  QWEN_API_KEY: z.string().optional(),
+  QWEN_MODEL: z.string().default("qwen-plus"),
+  QWEN_BASE_URL: z
+    .string()
+    .url()
+    .default("https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
 
   // --- Consolidation ("sleep") ---
   // A fact never reconfirmed within this many days decays to 'stale'.

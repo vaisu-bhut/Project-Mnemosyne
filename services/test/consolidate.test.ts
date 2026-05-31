@@ -10,7 +10,7 @@ import {
   insertFact,
   upsertEntity,
   type Source,
-} from "../services/db/index.js";
+} from "../db/index.js";
 import {
   decayFacts,
   deduplicateFacts,
@@ -19,8 +19,8 @@ import {
   forgetEpisode,
   resolveEntities,
   setRetention,
-} from "../services/consolidate/index.js";
-import { createArtifactStore } from "../services/storage/index.js";
+} from "../consolidate/index.js";
+import { createArtifactStore } from "../storage/index.js";
 import { seedUser, testDb, truncateAll } from "./helpers.js";
 
 const db = testDb();

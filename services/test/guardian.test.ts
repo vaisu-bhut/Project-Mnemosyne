@@ -1,8 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { createSource, upsertEntity, type Source } from "../services/db/index.js";
-import { createEmbedder, createQueryEmbedder } from "../services/embeddings/index.js";
-import { recordEntity, recordEpisode, recordFact } from "../services/memory/encode.js";
-import { searchMemory } from "../services/memory/retrieve.js";
+import { createSource, upsertEntity, type Source } from "../db/index.js";
+import { createEmbedder, createQueryEmbedder } from "../embeddings/index.js";
+import { recordEntity, recordEpisode, recordFact } from "../memory/encode.js";
+import { searchMemory } from "../memory/retrieve.js";
 import { devConfig, seedUser, testDb, truncateAll } from "./helpers.js";
 
 const db = testDb();

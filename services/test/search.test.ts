@@ -5,7 +5,7 @@ import {
   searchEntitiesByVector,
   searchEpisodesByVector,
   upsertEntity,
-} from "../services/db/index.js";
+} from "../db/index.js";
 import { embedding, seedUser, testDb, truncateAll } from "./helpers.js";
 
 const db = testDb();

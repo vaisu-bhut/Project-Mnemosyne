@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createEmbedder } from "../services/embeddings/index.js";
+import { createEmbedder } from "../embeddings/index.js";
 
 const baseConfig = {
   EMBEDDING_PROVIDER: "dev" as const,

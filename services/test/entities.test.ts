@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { upsertEntity } from "../services/db/index.js";
+import { upsertEntity } from "../db/index.js";
 import { seedUser, testDb, truncateAll } from "./helpers.js";
 
 const db = testDb();

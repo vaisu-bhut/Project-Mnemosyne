@@ -5,7 +5,7 @@ import {
   insertFact,
   reinforceFact,
   upsertEntity,
-} from "../services/db/index.js";
+} from "../db/index.js";
 import { seedUser, testDb, truncateAll } from "./helpers.js";
 
 const db = testDb();

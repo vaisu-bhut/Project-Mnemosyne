@@ -1,15 +1,15 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { hashPassword, verifyPassword } from "../services/auth/password.js";
-import { encryptToken, decryptToken, sha256Hex } from "../services/auth/crypto.js";
-import { signAccessToken, verifyAccessToken } from "../services/auth/jwt.js";
-import { buildServer } from "../services/api/server.js";
-import { createDb } from "../services/db/index.js";
-import { createArtifactStore } from "../services/storage/index.js";
-import { createQueryEmbedder } from "../services/embeddings/index.js";
-import { createGenerator } from "../services/llm/index.js";
-import { createIngestQueue } from "../services/queue/index.js";
+import { hashPassword, verifyPassword } from "../auth/password.js";
+import { encryptToken, decryptToken, sha256Hex } from "../auth/crypto.js";
+import { signAccessToken, verifyAccessToken } from "../auth/jwt.js";
+import { buildServer } from "../api/server.js";
+import { createDb } from "../db/index.js";
+import { createArtifactStore } from "../storage/index.js";
+import { createQueryEmbedder } from "../embeddings/index.js";
+import { createGenerator } from "../llm/index.js";
+import { createIngestQueue } from "../queue/index.js";
 import { Redis } from "ioredis";
-import { parseConfig } from "../services/config/index.js";
+import { parseConfig } from "../config/index.js";
 import { devConfig, testDb, truncateAll } from "./helpers.js";
 
 describe("password hashing (scrypt)", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createCalendarConnector } from "../services/ingest/gcal.js";
+import { createCalendarConnector } from "../ingest/gcal.js";
 
 function ok(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body, text: async () => "" } as unknown as Response;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createContactsConnector } from "../services/ingest/gcontacts.js";
+import { createContactsConnector } from "../ingest/gcontacts.js";
 
 function ok(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body, text: async () => "" } as unknown as Response;
