@@ -1,6 +1,7 @@
 import {
   createOpenLoop,
   insertEdge,
+  updateSourceConfig,
   type Db,
   type Source,
 } from "../db/index.js";
@@ -9,7 +10,7 @@ import type { Embedder } from "../embeddings/index.js";
 import type { Extractor, EntityType } from "../extract/index.js";
 import { recordEntity, recordEpisode, recordFact } from "../memory/encode.js";
 import type { ArtifactStore } from "../storage/index.js";
-import type { Connector } from "./connector.js";
+import type { Connector, Participant } from "./connector.js";
 
 export interface IngestDeps {
   db: Db;
@@ -28,6 +29,50 @@ function artifactKey(source: Source, externalId: string): string {
   return `${source.kind}/${source.id}/${safe}`;
 }
 
+/** A display label for a participant: name if present, else the email. */
+function participantName(p: Participant): string | null {
+  return p.name?.trim() || p.email || null;
+}
+
+/**
+ * Create/resolve a person entity for each participant (email used as a strong
+ * identity alias so the same address always resolves to one entity) and link
+ * them to the episode. Deterministic — complements LLM extraction from the body.
+ */
+async function linkParticipants(
+  deps: IngestDeps,
+  userId: string,
+  episodeId: string,
+  participants: Participant[],
+): Promise<void> {
+  const seen = new Set<string>();
+  for (const p of participants) {
+    const name = participantName(p);
+    if (!name) continue;
+    const key = (p.email ?? name).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const entity = await recordEntity(
+      { db: deps.db, embedder: deps.embedder },
+      {
+        userId,
+        type: "person",
+        canonicalName: p.name?.trim() || p.email!,
+        aliases: p.email ? [p.email] : [],
+        attrs: p.email ? { email: p.email } : {},
+      },
+    );
+    await insertEdge(deps.db, {
+      userId,
+      srcId: entity.id,
+      dstId: episodeId,
+      rel: "mentioned_in",
+      props: { role: p.role },
+    });
+  }
+}
+
 /**
  * Pull items from a connector and store each as an episode: raw payload to the
  * artifact store, the episode (embedded) to Postgres. Idempotent on
@@ -43,12 +88,29 @@ export async function runIngest(
   connector: Connector,
 ): Promise<IngestSummary> {
   await deps.store.init();
-  const { items } = await connector.pull();
-  const episodeIds: string[] = [];
 
+  // Resume from the per-source cursor (incremental sync), if any.
+  const priorConfig = source.config as Record<string, unknown>;
+  const cursor = typeof priorConfig.cursor === "string" ? priorConfig.cursor : null;
+  const { items, cursor: nextCursor } = await connector.pull({ cursor });
+
+  const episodeIds: string[] = [];
   for (const item of items) {
     const key = artifactKey(source, item.externalId);
     await deps.store.putArtifact(key, item.raw, item.contentType);
+
+    // Persist attachments to the object store; reference them on the episode.
+    const attachmentKeys: { key: string; filename: string; contentType: string }[] = [];
+    for (const att of item.attachments ?? []) {
+      const attKey = `${key}/att/${att.filename}`;
+      await deps.store.putArtifact(attKey, att.data, att.contentType);
+      attachmentKeys.push({ key: attKey, filename: att.filename, contentType: att.contentType });
+    }
+
+    const meta = {
+      ...(item.meta ?? {}),
+      ...(attachmentKeys.length ? { attachments: attachmentKeys } : {}),
+    };
 
     const episode = await recordEpisode(
       { db: deps.db, embedder: deps.embedder },
@@ -61,10 +123,19 @@ export async function runIngest(
         title: item.title ?? null,
         body: item.body,
         artifactUri: key,
-        meta: item.meta,
+        meta,
       },
     );
     episodeIds.push(episode.id);
+
+    if (item.participants?.length) {
+      await linkParticipants(deps, source.user_id, episode.id, item.participants);
+    }
+  }
+
+  // Persist the advanced cursor for the next incremental run.
+  if (nextCursor != null && nextCursor !== cursor) {
+    await updateSourceConfig(deps.db, source.id, { ...priorConfig, cursor: nextCursor });
   }
 
   return { ingested: items.length, episodeIds };

@@ -2,7 +2,7 @@ import "dotenv/config";
 import { Queue, Worker } from "bullmq";
 import { Redis } from "ioredis";
 import { getConfig } from "../config/index.js";
-import { createDb, listUserIds } from "../db/index.js";
+import { createDb, listUserIds, updateSourceConfig } from "../db/index.js";
 import { createEmbedder } from "../embeddings/index.js";
 import { createExtractor } from "../extract/index.js";
 import { createGenerator } from "../llm/index.js";
@@ -45,8 +45,21 @@ const ingestWorker = new Worker<IngestJob>(
       .selectAll()
       .where("id", "=", job.data.sourceId)
       .executeTakeFirstOrThrow();
-    const connector = await connectorForSource(source, { db, config });
-    const summary = await runIngest({ db, store, embedder }, source, connector);
+    let summary;
+    try {
+      const connector = await connectorForSource(source, { db, config });
+      summary = await runIngest({ db, store, embedder }, source, connector);
+    } catch (err) {
+      // OAuth-backed sources can lose access (revoked/expired). Flag the source
+      // so the user can re-connect, and fail the job for retry/visibility.
+      if (source.kind === "gmail") {
+        await updateSourceConfig(db, source.id, {
+          ...(source.config as Record<string, unknown>),
+          needsReauth: true,
+        });
+      }
+      throw err;
+    }
     for (const episodeId of summary.episodeIds) {
       await extractQueue.add("extract", { episodeId, sourceId: source.id });
     }

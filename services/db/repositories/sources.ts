@@ -45,3 +45,16 @@ export async function getSource(
     .where("user_id", "=", userId)
     .executeTakeFirst();
 }
+
+/** Replace a source's config jsonb (e.g. to persist an incremental cursor). */
+export async function updateSourceConfig(
+  db: Db,
+  sourceId: string,
+  config: Record<string, unknown>,
+): Promise<void> {
+  await db
+    .updateTable("sources")
+    .set({ config })
+    .where("id", "=", sourceId)
+    .execute();
+}

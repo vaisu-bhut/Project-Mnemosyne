@@ -11,6 +11,7 @@ export { toVector, parseVector } from "./vector.js";
 export {
   createSource,
   getSource,
+  updateSourceConfig,
   type Source,
   type CreateSourceInput,
 } from "./repositories/sources.js";

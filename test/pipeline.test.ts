@@ -9,6 +9,7 @@ import { createExtractor } from "../services/extract/index.js";
 import { createGenerator } from "../services/llm/index.js";
 import { createFilesystemConnector } from "../services/ingest/filesystem.js";
 import { runExtraction, runIngest } from "../services/ingest/pipeline.js";
+import type { Connector } from "../services/ingest/connector.js";
 import { createArtifactStore } from "../services/storage/index.js";
 import { devConfig, seedUser, testDb, truncateAll } from "./helpers.js";
 
@@ -92,5 +93,51 @@ describe("ingest + extraction pipeline", () => {
       .where("rel", "=", "mentioned_in")
       .executeTakeFirstOrThrow();
     expect(edges).toBeGreaterThan(0);
+  });
+
+  it("links participants from headers and persists the connector cursor", async () => {
+    const store = createArtifactStore({ LOCAL_STORAGE_DIR: storeDir });
+    const source = await createSource(db, { userId, kind: "gmail", displayName: "Gmail" });
+
+    const stub: Connector = {
+      name: "stub",
+      async pull(opts) {
+        expect(opts?.cursor ?? null).toBeNull(); // first run, no cursor yet
+        return {
+          cursor: "hist-1",
+          items: [
+            {
+              externalId: "m1",
+              occurredAt: new Date(),
+              kind: "email",
+              title: "Lunch",
+              body: "From: Sara Lin <sara@x.com>\n\nLet's grab lunch.",
+              raw: Buffer.from("{}"),
+              contentType: "application/json",
+              participants: [{ name: "Sara Lin", email: "sara@x.com", role: "from" }],
+            },
+          ],
+        };
+      },
+    };
+
+    const summary = await runIngest({ db, store, embedder }, source, stub);
+    expect(summary.ingested).toBe(1);
+
+    // A person entity was created with the email as a strong identity alias.
+    const people = await db.selectFrom("entities").selectAll().where("type", "=", "person").execute();
+    expect(people.some((p) => p.aliases.includes("sara@x.com"))).toBe(true);
+
+    // The participant is linked to the episode.
+    const edges = await db.selectFrom("edges").selectAll().where("rel", "=", "mentioned_in").execute();
+    expect(edges.length).toBeGreaterThan(0);
+
+    // The incremental cursor was persisted back onto the source.
+    const updated = await db
+      .selectFrom("sources")
+      .select("config")
+      .where("id", "=", source.id)
+      .executeTakeFirstOrThrow();
+    expect((updated.config as { cursor?: string }).cursor).toBe("hist-1");
   });
 });

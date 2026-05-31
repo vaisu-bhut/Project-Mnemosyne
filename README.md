@@ -125,6 +125,14 @@ curl -X POST localhost:3000/sources -H "authorization: Bearer <t>" `
 curl -X POST localhost:3000/sources/<id>/ingest -H "authorization: Bearer <t>" -d '{}'
 ```
 
+The Gmail connector is **incremental and people-aware**: the first run backfills
+(`GMAIL_QUERY`, up to `GMAIL_MAX_MESSAGES`) and records a History API cursor on
+the source; later runs sync only what changed (falling back to backfill if the
+cursor expires). Senders/recipients become **person entities** (email as a
+strong identity alias) linked to each email, bodies are cleaned (HTML→text,
+quoted replies/signatures stripped), and attachments are stored to the artifact
+store. A revoked/expired token flags the source `needsReauth`.
+
 ## The memory pipeline (ingest → extract → retrieve)
 
 With both `pnpm api` and `pnpm worker` running (all routes need `-H "authorization: Bearer <token>"`):
