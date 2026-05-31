@@ -105,3 +105,108 @@ export interface RetentionInput {
   purgeAfter?: string;
   vaulted?: boolean;
 }
+
+// --- Agent mesh (BACKEND.md §6) ---
+
+export type LoopDirection = "i_owe" | "they_owe";
+export type LoopStatus = "open" | "done" | "rotted";
+export type BlackboardStatus = "active" | "dismissed" | "done";
+
+/** /mind row (raw snake_case, camelized client-side). */
+export interface BlackboardEntry {
+  id: string;
+  userId: string;
+  kind: string;
+  agent: string;
+  title: string;
+  body: string | null;
+  entityId: string | null;
+  salience: number;
+  payload: Record<string, unknown> | null;
+  status: BlackboardStatus;
+  createdAt: string;
+  expiresAt: string | null;
+}
+
+/** /open-loops row (raw snake_case, camelized client-side). */
+export interface OpenLoop {
+  id: string;
+  userId: string;
+  description: string;
+  counterparty: string | null;
+  direction: LoopDirection;
+  dueAt: string | null;
+  sourceEpisode: string | null;
+  status: LoopStatus;
+  createdAt: string;
+}
+
+export interface OpenThread {
+  id: string;
+  description: string;
+  direction: string;
+}
+
+export interface RelationshipHealth {
+  entityId: string;
+  name: string;
+  closeness: number | null;
+  interactions: number;
+  lastContactAt: string | null;
+  daysSinceContact: number | null;
+  openThreads: OpenThread[];
+}
+
+export interface RelationshipAlert {
+  entityId: string;
+  name: string;
+  daysSinceContact: number;
+}
+
+export interface BriefInteraction {
+  episodeId: string;
+  title: string | null;
+  occurredAt: string;
+  snippet: string | null;
+}
+
+export interface BriefFact {
+  statement: string;
+  episodeId: string;
+}
+
+export interface Briefing {
+  entityId: string;
+  name: string;
+  aliases: string[];
+  summary: string | null;
+  closeness: number | null;
+  lastContactAt: string | null;
+  daysSinceContact: number | null;
+  interactions: number;
+  recentInteractions: BriefInteraction[];
+  openThreads: OpenThread[];
+  recentFacts: BriefFact[];
+  suggestedQuestions: string[];
+}
+
+export interface UpcomingBriefing {
+  eventId: string;
+  eventTitle: string | null;
+  eventStart: string;
+  briefing: Briefing;
+}
+
+export interface NudgerResult {
+  openLoopNudges: number;
+  relationshipAlerts: number;
+  total: number;
+}
+
+export type Intent = "recall" | "briefing" | "people" | "nudges";
+
+export interface RouteResult {
+  intent: Intent;
+  via: string;
+  result: unknown;
+}
