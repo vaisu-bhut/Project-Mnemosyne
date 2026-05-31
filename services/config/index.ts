@@ -89,6 +89,12 @@ const EnvSchema = z.object({
   TOKEN_ENC_KEY: z.string().default("dev-insecure-token-encryption-key"),
   APP_BASE_URL: z.string().url().default("http://localhost:3000"),
 
+  // --- Web frontend (CORS) ---
+  // Comma-separated list of browser origins allowed to call the API. In dev the
+  // Next.js app (app/) uses a same-origin proxy, so this isn't exercised; set it
+  // for real cross-origin / production deployments. Use "*" to allow any origin.
+  WEB_ORIGIN: z.string().default("http://localhost:3001"),
+
   // --- Google OAuth + Gmail (create an OAuth client in Google Cloud Console) ---
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),

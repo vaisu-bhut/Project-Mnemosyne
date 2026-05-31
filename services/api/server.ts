@@ -1,4 +1,5 @@
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
+import cors from "@fastify/cors";
 import { Redis } from "ioredis";
 import { sql } from "kysely";
 import { z } from "zod";
@@ -120,6 +121,16 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: true });
   const { db, store, redis, config, queryEmbedder, generator, ingestQueue, consolidateOptions, relationshipStaleDays, semantic } = deps;
   const encKey = config.TOKEN_ENC_KEY;
+
+  // CORS for the browser frontend (app/). Allowed origins come from WEB_ORIGIN
+  // (comma-separated, or "*"). In dev the Next.js app proxies same-origin so this
+  // is a no-op; it matters for real cross-origin / production deployments.
+  const origins = config.WEB_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean);
+  app.register(cors, {
+    origin: origins.includes("*") ? true : origins,
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  });
 
   // Authentication guard: populate req.user from the Bearer token; reject
   // protected routes without a valid one. Every handler below is user-scoped.
