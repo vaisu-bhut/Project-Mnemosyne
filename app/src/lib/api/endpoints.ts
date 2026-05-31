@@ -7,7 +7,10 @@ import type {
   BlackboardEntry,
   Briefing,
   ClassifySourceInput,
+  ConsolidationReport,
+  Contradiction,
   CreateSourceInput,
+  HealthStatus,
   LoopStatus,
   Mode,
   NudgerResult,
@@ -18,6 +21,7 @@ import type {
   RouteResult,
   SearchResult,
   Source,
+  SummarizeResult,
   UpcomingBriefing,
 } from "./types";
 
@@ -96,4 +100,14 @@ export const openLoopsApi = {
   // /open-loops returns raw rows (snake_case).
   list: async (status?: LoopStatus): Promise<OpenLoop[]> =>
     camelize<OpenLoop[]>(await request("/open-loops", { query: { status } })),
+};
+
+export const adminApi = {
+  consolidate: () =>
+    request<ConsolidationReport>("/consolidate", { method: "POST", body: {} }),
+  // /contradictions rows are already camelCase (aliased server-side).
+  contradictions: () => request<Contradiction[]>("/contradictions"),
+  summarizeEntity: (id: string) =>
+    request<SummarizeResult>(`/entities/${id}/summarize`, { method: "POST", body: {} }),
+  health: () => request<HealthStatus>("/health"),
 };

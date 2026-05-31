@@ -210,3 +210,33 @@ export interface RouteResult {
   via: string;
   result: unknown;
 }
+
+// --- Admin / consolidation (BACKEND.md §6) ---
+
+export interface ConsolidationReport {
+  entitiesMerged: number;
+  factsRetracted: number;
+  contradictionsLinked: number;
+  factsStaled: number;
+  episodesCompressed: number;
+  episodesPurged: number;
+}
+
+/** /contradictions rows are already aliased to camelCase server-side. */
+export interface Contradiction {
+  id: string;
+  statement: string;
+  episode: string | null;
+  contradictsId: string;
+  contradictsStatement: string;
+}
+
+export interface SummarizeResult {
+  id: string;
+  summary: string | null;
+}
+
+export interface HealthStatus {
+  status: "ok" | "degraded";
+  checks: { database: boolean; redis: boolean; storage: boolean };
+}
