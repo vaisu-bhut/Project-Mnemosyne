@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { AppConfig } from "../config/index.js";
 import {
@@ -9,6 +9,7 @@ import {
   findSessionByHash,
   getUserByEmail,
   getUserById,
+  linkOauthAccountForUser,
   upsertOauthAccount,
   type Db,
   type User,
@@ -16,10 +17,18 @@ import {
 import { encryptToken, sha256Hex } from "./crypto.js";
 import {
   buildGoogleAuthUrl,
+  buildWebCallbackUrl,
   buildWebHandoffUrl,
-  exchangeCodeForTokens,
+  exchangeCodeForTokens as exchangeGoogleCode,
   fetchGoogleProfile,
 } from "./google.js";
+import {
+  buildMicrosoftAuthUrl,
+  buildMicrosoftHandoffUrl,
+  buildMicrosoftWebCallbackUrl,
+  exchangeCodeForTokens as exchangeMicrosoftCode,
+  fetchMicrosoftProfile,
+} from "./microsoft.js";
 import { signAccessToken, signState, verifyAccessToken, verifyState } from "./jwt.js";
 import { hashPassword, verifyPassword } from "./password.js";
 
@@ -142,60 +151,166 @@ export function registerAuthRoutes(app: FastifyInstance, deps: AuthDeps): void {
     return { user: publicUser(user) };
   });
 
-  // --- Google OAuth (login + Gmail access) ---
-  // `mode=web` makes the callback redirect the browser back to the web app with
-  // the token pair (so a browser can capture them); anything else => JSON.
-  app.get<{ Querystring: { mode?: string } }>("/auth/google/url", async (req) => {
+  // --- OAuth (sign-in + connecting accounts), shared across providers ---
+  // `mode=web` makes the callback redirect the browser back to the web app (so a
+  // browser can capture the result); anything else => JSON. `intent=link`
+  // attaches the account to the already-logged-in caller instead of signing in;
+  // it requires a valid Bearer token (req.user). `loginHint` pre-targets a
+  // specific account (used by "Add services").
+  interface OAuthAdapter {
+    provider: string;
+    buildAuthUrl: (state: string, opts: { loginHint?: string }) => string;
+    exchange: (
+      code: string,
+    ) => Promise<{ accessToken: string; refreshToken?: string; expiresAt: Date | null; scope?: string }>;
+    fetchProfile: (
+      accessToken: string,
+    ) => Promise<{ providerAccountId: string; email: string; name?: string }>;
+    handoffUrl: (origin: string, tokens: { accessToken: string; refreshToken: string }) => string;
+    webCallbackUrl: (origin: string, fragment: Record<string, string>) => string;
+  }
+
+  type UrlQuery = { mode?: string; intent?: string; loginHint?: string };
+  async function oauthUrl(
+    adapter: OAuthAdapter,
+    req: FastifyRequest<{ Querystring: UrlQuery }>,
+    reply: FastifyReply,
+  ): Promise<unknown> {
     const mode = req.query.mode === "web" ? "web" : "json";
+    const linking = req.query.intent === "link";
+    if (linking && !req.user) {
+      reply.code(401);
+      return { error: "authentication required to link an account" };
+    }
     const state = await signState(
       config.JWT_SECRET,
       randomBytes(16).toString("hex"),
       mode,
+      linking ? "link" : "signin",
+      linking ? req.user!.id : undefined,
     );
-    return { url: buildGoogleAuthUrl(config, state) };
-  });
+    const loginHint =
+      typeof req.query.loginHint === "string" && req.query.loginHint
+        ? req.query.loginHint
+        : undefined;
+    return { url: adapter.buildAuthUrl(state, { loginHint }) };
+  }
 
-  app.get<{ Querystring: { code?: string; state?: string } }>(
-    "/auth/google/callback",
-    async (req, reply) => {
-      const { code, state } = req.query;
-      const claims = state ? await verifyState(config.JWT_SECRET, state) : null;
-      if (!code || !claims) {
+  type CallbackQuery = { code?: string; state?: string };
+  async function oauthCallback(
+    adapter: OAuthAdapter,
+    req: FastifyRequest<{ Querystring: CallbackQuery }>,
+    reply: FastifyReply,
+  ): Promise<unknown> {
+    const { code, state } = req.query;
+    const claims = state ? await verifyState(config.JWT_SECRET, state) : null;
+    if (!code || !claims) {
+      reply.code(400);
+      return { error: "invalid oauth callback (missing/expired state or code)" };
+    }
+    const tokens = await adapter.exchange(code);
+    const profile = await adapter.fetchProfile(tokens.accessToken);
+    const encAccess = encryptToken(tokens.accessToken, config.TOKEN_ENC_KEY);
+    const encRefresh = tokens.refreshToken
+      ? encryptToken(tokens.refreshToken, config.TOKEN_ENC_KEY)
+      : null;
+
+    // --- Link flow: attach this account to the logged-in user ---
+    if (claims.intent === "link") {
+      const linkUser = claims.linkUserId ? await getUserById(db, claims.linkUserId) : null;
+      if (!linkUser) {
         reply.code(400);
-        return { error: "invalid oauth callback (missing/expired state or code)" };
+        return { error: "invalid link request (unknown user)" };
       }
-      const tokens = await exchangeCodeForTokens(config, code);
-      const profile = await fetchGoogleProfile(tokens.accessToken);
-
-      let user = await getUserByEmail(db, profile.email);
-      user ??= await createUser(db, {
+      const result = await linkOauthAccountForUser(db, {
+        userId: linkUser.id,
+        provider: adapter.provider,
+        providerAccountId: profile.providerAccountId,
+        accessToken: encAccess,
+        refreshToken: encRefresh,
+        expiresAt: tokens.expiresAt,
+        scope: tokens.scope ?? null,
         email: profile.email,
         displayName: profile.name ?? null,
       });
-
-      await upsertOauthAccount(db, {
-        userId: user.id,
-        provider: "google",
-        providerAccountId: profile.sub,
-        accessToken: encryptToken(tokens.accessToken, config.TOKEN_ENC_KEY),
-        refreshToken: tokens.refreshToken
-          ? encryptToken(tokens.refreshToken, config.TOKEN_ENC_KEY)
-          : null,
-        expiresAt: tokens.expiresAt,
-        scope: tokens.scope ?? null,
-      });
-
-      const issued = await issueTokens(deps, user);
-
-      // Web flow: 302 back to the SPA callback with the token pair in the URL
-      // fragment (kept out of server logs / Referer; read client-side).
-      if (claims.mode === "web") {
-        return reply.redirect(buildWebHandoffUrl(config.WEB_ORIGIN, issued), 302);
+      if (result.status === "conflict") {
+        // This account already belongs to another Mnemosyne user — don't steal it.
+        if (claims.mode === "web") {
+          return reply.redirect(
+            adapter.webCallbackUrl(config.WEB_ORIGIN, { error: "account_in_use" }),
+            302,
+          );
+        }
+        reply.code(409);
+        return { error: "This account is already linked to another user." };
       }
+      // Success: the user is already logged in, so issue NO new app tokens.
+      if (claims.mode === "web") {
+        return reply.redirect(adapter.webCallbackUrl(config.WEB_ORIGIN, { linked: "1" }), 302);
+      }
+      return { linked: true };
+    }
 
-      // Native/mobile flow: return the token pair as JSON. (A native app would
-      // receive this via a custom-scheme redirect; documented in the README.)
-      return { user: publicUser(user), ...issued };
+    // --- Sign-in flow: resolve/create the user by their external identity ---
+    let user = await getUserByEmail(db, profile.email);
+    user ??= await createUser(db, { email: profile.email, displayName: profile.name ?? null });
+
+    await upsertOauthAccount(db, {
+      userId: user.id,
+      provider: adapter.provider,
+      providerAccountId: profile.providerAccountId,
+      accessToken: encAccess,
+      refreshToken: encRefresh,
+      expiresAt: tokens.expiresAt,
+      scope: tokens.scope ?? null,
+      email: profile.email,
+      displayName: profile.name ?? null,
+    });
+
+    const issued = await issueTokens(deps, user);
+    // Web flow: 302 back to the SPA callback with the token pair in the URL
+    // fragment (kept out of server logs / Referer; read client-side).
+    if (claims.mode === "web") {
+      return reply.redirect(adapter.handoffUrl(config.WEB_ORIGIN, issued), 302);
+    }
+    // Native/mobile flow: return the token pair as JSON.
+    return { user: publicUser(user), ...issued };
+  }
+
+  const googleAdapter: OAuthAdapter = {
+    provider: "google",
+    buildAuthUrl: (state, opts) => buildGoogleAuthUrl(config, state, opts),
+    exchange: (code) => exchangeGoogleCode(config, code),
+    fetchProfile: async (accessToken) => {
+      const p = await fetchGoogleProfile(accessToken);
+      return { providerAccountId: p.sub, email: p.email, name: p.name };
     },
+    handoffUrl: (origin, tokens) => buildWebHandoffUrl(origin, tokens),
+    webCallbackUrl: (origin, fragment) => buildWebCallbackUrl(origin, fragment),
+  };
+
+  const microsoftAdapter: OAuthAdapter = {
+    provider: "microsoft",
+    buildAuthUrl: (state, opts) => buildMicrosoftAuthUrl(config, state, opts),
+    exchange: (code) => exchangeMicrosoftCode(config, code),
+    fetchProfile: async (accessToken) => {
+      const p = await fetchMicrosoftProfile(accessToken);
+      return { providerAccountId: p.id, email: p.email, name: p.name };
+    },
+    handoffUrl: (origin, tokens) => buildMicrosoftHandoffUrl(origin, tokens),
+    webCallbackUrl: (origin, fragment) => buildMicrosoftWebCallbackUrl(origin, fragment),
+  };
+
+  app.get<{ Querystring: UrlQuery }>("/auth/google/url", (req, reply) =>
+    oauthUrl(googleAdapter, req, reply),
+  );
+  app.get<{ Querystring: CallbackQuery }>("/auth/google/callback", (req, reply) =>
+    oauthCallback(googleAdapter, req, reply),
+  );
+  app.get<{ Querystring: UrlQuery }>("/auth/microsoft/url", (req, reply) =>
+    oauthUrl(microsoftAdapter, req, reply),
+  );
+  app.get<{ Querystring: CallbackQuery }>("/auth/microsoft/callback", (req, reply) =>
+    oauthCallback(microsoftAdapter, req, reply),
   );
 }

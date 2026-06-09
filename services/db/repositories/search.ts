@@ -13,6 +13,14 @@ export type WithDistance<T> = T & { distance: number };
 export interface SearchOptions {
   /** Source ids whose content the Guardian has hidden for this context. */
   excludeSourceIds?: string[];
+  /** Restrict to a single source (page-context scoping). */
+  sourceId?: string;
+  /** Facts: restrict to those whose subject OR object is this entity. */
+  subjectId?: string;
+  /** Episodes: restrict to those this entity is `mentioned_in` (via edges). */
+  mentionedByEntityId?: string;
+  /** Episodes: restrict to a single kind (e.g. "email"). */
+  kind?: string;
 }
 
 // NOTE: `<=>` is pgvector's cosine-distance operator, matched by the
@@ -27,6 +35,11 @@ function denyClause(excludeSourceIds?: string[]) {
     : sql``;
 }
 
+/** Restrict to a single source id (page-context scoping). */
+function sourceClause(sourceId?: string) {
+  return sourceId ? sql`AND source_id = ${sourceId}::uuid` : sql``;
+}
+
 /** Cosine KNN over episode embeddings (user-scoped, Guardian-filtered). */
 export async function searchEpisodesByVector(
   db: Db,
@@ -36,11 +49,22 @@ export async function searchEpisodesByVector(
   opts: SearchOptions = {},
 ): Promise<WithDistance<Episode>[]> {
   const vec = toVector(embedding);
+  const mentioned = opts.mentionedByEntityId
+    ? sql`AND id IN (
+        SELECT dst_id FROM edges
+        WHERE user_id = ${userId} AND src_id = ${opts.mentionedByEntityId}::uuid
+          AND rel = 'mentioned_in'
+      )`
+    : sql``;
+  const kindClause = opts.kind ? sql`AND kind = ${opts.kind}` : sql``;
   const res = await sql<WithDistance<Episode>>`
     SELECT *, embedding <=> ${vec}::vector AS distance
     FROM episodes
     WHERE user_id = ${userId} AND embedding IS NOT NULL
       ${denyClause(opts.excludeSourceIds)}
+      ${sourceClause(opts.sourceId)}
+      ${mentioned}
+      ${kindClause}
     ORDER BY embedding <=> ${vec}::vector
     LIMIT ${k}
   `.execute(db);
@@ -56,11 +80,16 @@ export async function searchFactsByVector(
   opts: SearchOptions = {},
 ): Promise<WithDistance<Fact>[]> {
   const vec = toVector(embedding);
+  const subject = opts.subjectId
+    ? sql`AND (subject_id = ${opts.subjectId}::uuid OR object_id = ${opts.subjectId}::uuid)`
+    : sql``;
   const res = await sql<WithDistance<Fact>>`
     SELECT *, embedding <=> ${vec}::vector AS distance
     FROM facts
     WHERE user_id = ${userId} AND status = 'active' AND embedding IS NOT NULL
       ${denyClause(opts.excludeSourceIds)}
+      ${sourceClause(opts.sourceId)}
+      ${subject}
     ORDER BY embedding <=> ${vec}::vector
     LIMIT ${k}
   `.execute(db);

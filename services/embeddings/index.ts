@@ -23,6 +23,32 @@ type EmbeddingConfig = Pick<
   | "VECTOR_DIM"
 >;
 
+/**
+ * POST with bounded exponential backoff on rate-limit / transient errors
+ * (HTTP 429, 503). Embedding providers (esp. Gemini's free tier) cap requests
+ * per minute, and ingestion embeds one item per request — so a burst trips the
+ * limit. Honors `Retry-After` when present. Returns the final Response (which
+ * may still be an error) for the caller to handle.
+ */
+async function postWithRetry(
+  url: string,
+  init: RequestInit,
+  maxAttempts = 5,
+): Promise<Response> {
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(url, init);
+    if ((res.status !== 429 && res.status !== 503) || attempt >= maxAttempts) {
+      return res;
+    }
+    const retryAfter = Number(res.headers.get("retry-after"));
+    const delayMs =
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : Math.min(1000 * 2 ** (attempt - 1), 8000);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+}
+
 /** L2-normalize a vector in place and return it (zero vector left as-is). */
 function normalize(vec: number[]): number[] {
   let sumSq = 0;
@@ -103,7 +129,7 @@ function createGeminiEmbedder(config: EmbeddingConfig): Embedder {
 
   async function embed(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
-    const res = await fetch(url, {
+    const res = await postWithRetry(url, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -154,7 +180,7 @@ function createQwenEmbedder(config: EmbeddingConfig): Embedder {
 
   async function embed(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
-    const res = await fetch(url, {
+    const res = await postWithRetry(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

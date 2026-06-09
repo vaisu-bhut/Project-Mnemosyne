@@ -39,9 +39,20 @@ export async function verifyAccessToken(
  */
 export type OAuthMode = "json" | "web";
 
+/**
+ * Why the OAuth dance was started:
+ *   - "signin" — resolve/create a user by their external identity (default)
+ *   - "link"   — attach the external account to the already-logged-in
+ *                `linkUserId`, without creating or switching users
+ */
+export type OAuthIntent = "signin" | "link";
+
 export interface StateClaims {
   nonce: string;
   mode: OAuthMode;
+  intent: OAuthIntent;
+  /** Present only when intent === "link": the user to attach the account to. */
+  linkUserId?: string;
 }
 
 /** Sign a short-lived state token carrying the OAuth CSRF nonce + client mode. */
@@ -49,8 +60,10 @@ export async function signState(
   secret: string,
   nonce: string,
   mode: OAuthMode = "json",
+  intent: OAuthIntent = "signin",
+  linkUserId?: string,
 ): Promise<string> {
-  return new SignJWT({ nonce, mode })
+  return new SignJWT({ nonce, mode, intent, ...(linkUserId ? { linkUserId } : {}) })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("10m")
@@ -64,9 +77,12 @@ export async function verifyState(
 ): Promise<StateClaims | null> {
   try {
     const { payload } = await jwtVerify(token, key(secret));
+    const linkUserId = payload.linkUserId ? String(payload.linkUserId) : undefined;
     return {
       nonce: String(payload.nonce ?? ""),
       mode: payload.mode === "web" ? "web" : "json",
+      intent: payload.intent === "link" ? "link" : "signin",
+      ...(linkUserId ? { linkUserId } : {}),
     };
   } catch {
     return null;

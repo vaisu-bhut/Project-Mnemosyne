@@ -8,7 +8,7 @@ import {
   Database,
   LayoutDashboard,
   ListChecks,
-  Search,
+  ScrollText,
   Settings,
   Users,
 } from "lucide-react";
@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/search", label: "Search & Ask", icon: Search },
+  { href: "/memory", label: "Memory", icon: ScrollText },
   { href: "/sources", label: "Sources", icon: Database },
   { href: "/people", label: "People", icon: Users },
   { href: "/briefings", label: "Briefings", icon: CalendarClock },
@@ -28,12 +28,12 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r bg-card md:flex">
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r bg-card md:flex">
       <div className="flex h-14 items-center gap-2 border-b px-5">
         <Brain className="size-5 text-primary" />
         <span className="font-semibold tracking-tight">Mnemosyne</span>
       </div>
-      <nav className="flex flex-1 flex-col gap-1 p-3">
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
         {NAV.map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (

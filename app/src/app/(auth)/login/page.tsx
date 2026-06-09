@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/common/Spinner";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -93,6 +94,12 @@ export default function LoginPage() {
               Sign in
             </Button>
           </form>
+          <div className="my-4 flex items-center gap-3">
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">or</span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+          <GoogleSignInButton />
           <p className="mt-4 text-center text-sm text-muted-foreground">
             No account?{" "}
             <Link href="/register" className="font-medium text-primary hover:underline">

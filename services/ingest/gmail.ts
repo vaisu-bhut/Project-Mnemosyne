@@ -89,15 +89,30 @@ export function createGmailConnector(opts: GmailConnectorOptions): Connector {
   const fetchAttachments = opts.fetchAttachments ?? true;
   const authHeader = { Authorization: `Bearer ${opts.accessToken}` };
 
-  async function api<T>(path: string): Promise<{ ok: boolean; status: number; body: T }> {
+  async function api<T>(
+    path: string,
+  ): Promise<{ ok: boolean; status: number; body: T; error?: string }> {
     const res = await doFetch(`${GMAIL_API}${path}`, { headers: authHeader });
-    const body = res.ok ? ((await res.json()) as T) : (undefined as T);
-    return { ok: res.ok, status: res.status, body };
+    if (!res.ok) {
+      const error = await res.text().catch(() => "");
+      return { ok: false, status: res.status, body: undefined as T, error };
+    }
+    return { ok: true, status: res.status, body: (await res.json()) as T };
+  }
+
+  /**
+   * Surface a hard API failure instead of silently ingesting nothing. A 403
+   * usually means the Gmail API isn't enabled for the OAuth client's project;
+   * 401 means the token was rejected. Either way the user needs to know.
+   */
+  function failHard(status: number, error: string | undefined): never {
+    throw new Error(`Gmail API error (${status}): ${error?.slice(0, 500) ?? "request failed"}`);
   }
 
   async function currentHistoryId(): Promise<string | undefined> {
-    const { ok, body } = await api<{ historyId?: string }>("/profile");
-    return ok ? body.historyId : undefined;
+    const { ok, status, body, error } = await api<{ historyId?: string }>("/profile");
+    if (!ok) failHard(status, error);
+    return body.historyId;
   }
 
   /** Backfill: collect up to `max` message ids matching the query (paginated). */
@@ -107,10 +122,11 @@ export function createGmailConnector(opts: GmailConnectorOptions): Connector {
     do {
       const qs = new URLSearchParams({ q: query, maxResults: String(Math.min(max, 100)) });
       if (pageToken) qs.set("pageToken", pageToken);
-      const { ok, body } = await api<{ messages?: { id: string }[]; nextPageToken?: string }>(
-        `/messages?${qs.toString()}`,
-      );
-      if (!ok) break;
+      const { ok, status, body, error } = await api<{
+        messages?: { id: string }[];
+        nextPageToken?: string;
+      }>(`/messages?${qs.toString()}`);
+      if (!ok) failHard(status, error);
       for (const m of body.messages ?? []) ids.push(m.id);
       pageToken = body.nextPageToken;
     } while (pageToken && ids.length < max);
@@ -127,13 +143,13 @@ export function createGmailConnector(opts: GmailConnectorOptions): Connector {
     do {
       const qs = new URLSearchParams({ startHistoryId, historyTypes: "messageAdded" });
       if (pageToken) qs.set("pageToken", pageToken);
-      const { ok, status, body } = await api<{
+      const { ok, status, body, error } = await api<{
         history?: { messagesAdded?: { message: { id: string } }[] }[];
         historyId?: string;
         nextPageToken?: string;
       }>(`/history?${qs.toString()}`);
       if (status === 404) return "expired";
-      if (!ok) break;
+      if (!ok) failHard(status, error);
       for (const h of body.history ?? []) {
         for (const added of h.messagesAdded ?? []) ids.push(added.message.id);
       }

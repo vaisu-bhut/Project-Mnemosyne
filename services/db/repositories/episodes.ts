@@ -63,3 +63,31 @@ export async function insertEpisode(
     .where("occurred_at", "=", input.occurredAt)
     .executeTakeFirstOrThrow();
 }
+
+export interface ListEpisodesOptions {
+  limit?: number;
+  offset?: number;
+  kind?: string;
+  sourceId?: string;
+  /** Guardian-hidden sources to exclude in this context. */
+  excludeSourceIds?: string[];
+}
+
+/** List a user's episodes newest-first (for the Episodes browser). */
+export async function listEpisodes(
+  db: Db,
+  userId: string,
+  opts: ListEpisodesOptions = {},
+): Promise<Episode[]> {
+  let q = db.selectFrom("episodes").selectAll().where("user_id", "=", userId);
+  if (opts.kind) q = q.where("kind", "=", opts.kind);
+  if (opts.sourceId) q = q.where("source_id", "=", opts.sourceId);
+  if (opts.excludeSourceIds && opts.excludeSourceIds.length) {
+    q = q.where("source_id", "not in", opts.excludeSourceIds);
+  }
+  return q
+    .orderBy("occurred_at", "desc")
+    .limit(opts.limit ?? 50)
+    .offset(opts.offset ?? 0)
+    .execute();
+}

@@ -51,6 +51,23 @@ export interface SearchResult {
   entities: EntityHit[];
 }
 
+/**
+ * Page-context scope for grounded chat: bias the (still top-k) retrieval to a
+ * specific entity / source / kind so "ask your brain" answers about *this page*
+ * without dumping the whole page's data into the prompt.
+ */
+export interface RetrieveScope {
+  entityId?: string;
+  sourceId?: string;
+  kind?: string;
+}
+
+/** One prior turn of a chat, fed to the LLM for multi-turn coherence. */
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 function snippet(body: string | null, max = 200): string | null {
   if (!body) return null;
   const s = body.replace(/\s+/g, " ").trim();
@@ -67,16 +84,20 @@ export async function searchMemory(
   query: string,
   k = 5,
   ctx: AccessContext = {},
+  scope: RetrieveScope = {},
 ): Promise<SearchResult> {
   // Guardian: hide sources that aren't visible in this context.
   const { deniedSourceIds } = await resolveVisibility(deps.db, userId, ctx);
-  const opts = { excludeSourceIds: deniedSourceIds };
+  const base = { excludeSourceIds: deniedSourceIds, sourceId: scope.sourceId };
+  // Page-context scoping: facts by subject entity; episodes by mentioned entity / kind.
+  const factOpts = { ...base, subjectId: scope.entityId };
+  const epOpts = { ...base, mentionedByEntityId: scope.entityId, kind: scope.kind };
 
   const qv = await deps.embedder.embedOne(query);
   const [facts, episodes, entities] = await Promise.all([
-    searchFactsByVector(deps.db, userId, qv, k, opts),
-    searchEpisodesByVector(deps.db, userId, qv, k, opts),
-    searchEntitiesByVector(deps.db, userId, qv, k, opts),
+    searchFactsByVector(deps.db, userId, qv, k, factOpts),
+    searchEpisodesByVector(deps.db, userId, qv, k, epOpts),
+    searchEntitiesByVector(deps.db, userId, qv, k, base),
   ]);
 
   // Decrypt sensitive-tier bodies that were encrypted at rest (when authorized).
@@ -132,14 +153,22 @@ export interface Answer {
  * model is constrained to the supplied context and told to cite episode ids;
  * the dev path returns the cited facts directly (no hallucination surface).
  */
+export interface AskOptions {
+  /** Page-context scope to bias retrieval (entity/source/kind). */
+  scope?: RetrieveScope;
+  /** Prior turns for multi-turn coherence (LLM prompt only, not retrieval). */
+  history?: ChatTurn[];
+}
+
 export async function ask(
   deps: AskDeps,
   userId: string,
   question: string,
   k = 5,
   ctx: AccessContext = {},
+  options: AskOptions = {},
 ): Promise<Answer> {
-  const result = await searchMemory(deps, userId, question, k, ctx);
+  const result = await searchMemory(deps, userId, question, k, ctx, options.scope ?? {});
   const facts = result.facts;
   const episodes = result.episodes;
   const citations: Citation[] = [
@@ -166,11 +195,17 @@ export async function ask(
     ),
   ].join("\n");
 
+  const historyBlock = options.history?.length
+    ? `\nCONVERSATION SO FAR:\n${options.history
+        .map((h) => `${h.role === "user" ? "USER" : "ASSISTANT"}: ${h.content}`)
+        .join("\n")}\n`
+    : "";
+
   const prompt = `Answer the question using ONLY the context. If the context does not contain the answer, say you don't have that in memory. Cite supporting items inline as [episode:<id>]. Be concise.
 
 CONTEXT:
 ${context || "(empty)"}
-
+${historyBlock}
 QUESTION: ${question}`;
 
   const answer = await deps.generator.generateText(prompt);

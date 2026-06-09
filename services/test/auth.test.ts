@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import { encryptToken, decryptToken, sha256Hex } from "../auth/crypto.js";
-import { signAccessToken, verifyAccessToken } from "../auth/jwt.js";
+import { signAccessToken, signState, verifyAccessToken, verifyState } from "../auth/jwt.js";
 import { buildServer } from "../api/server.js";
 import { createDb } from "../db/index.js";
 import { createArtifactStore } from "../storage/index.js";
@@ -35,6 +35,22 @@ describe("access tokens (JWT)", () => {
     const claims = await verifyAccessToken("s3cret", t);
     expect(claims.userId).toBe("u1");
     await expect(verifyAccessToken("other", t)).rejects.toThrow();
+  });
+});
+
+describe("OAuth state tokens", () => {
+  it("round-trips the link intent + user id (signed, so unforgeable)", async () => {
+    const state = await signState("s3cret", "nonce-1", "web", "link", "user-42");
+    const claims = await verifyState("s3cret", state);
+    expect(claims).toMatchObject({ nonce: "nonce-1", mode: "web", intent: "link", linkUserId: "user-42" });
+    // Wrong signing key fails closed.
+    expect(await verifyState("other", state)).toBeNull();
+  });
+
+  it("defaults to the sign-in intent with no link user", async () => {
+    const claims = await verifyState("s3cret", await signState("s3cret", "n", "json"));
+    expect(claims?.intent).toBe("signin");
+    expect(claims?.linkUserId).toBeUndefined();
   });
 });
 

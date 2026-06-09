@@ -12,6 +12,8 @@ export const QUEUES = {
 
 export interface IngestJob {
   sourceId: string;
+  /** Optional ingest_runs row to report live progress into (created by the API). */
+  runId?: string;
 }
 export interface ExtractJob {
   episodeId: string;

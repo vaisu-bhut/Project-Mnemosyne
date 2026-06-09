@@ -85,7 +85,12 @@ export function createContactsConnector(opts: ContactsConnectorOptions): Connect
         });
         if (pageToken) qs.set("pageToken", pageToken);
         const res = await doFetch(`${PEOPLE_API}?${qs.toString()}`, { headers: authHeader });
-        if (!res.ok) break;
+        if (!res.ok) {
+          // Surface hard failures (e.g. 403 People API disabled, 401 bad token)
+          // instead of silently ingesting nothing.
+          const error = await res.text().catch(() => "");
+          throw new Error(`People API error (${res.status}): ${error.slice(0, 500)}`);
+        }
         const body = (await res.json()) as { connections?: Person[]; nextPageToken?: string };
         for (const c of body.connections ?? []) people.push(c);
         pageToken = body.nextPageToken;

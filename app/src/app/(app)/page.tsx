@@ -12,6 +12,7 @@ import { Spinner } from "@/components/common/Spinner";
 import { Button } from "@/components/ui/button";
 import { ConductBox } from "@/components/agents/ConductBox";
 import { MindCard } from "@/components/agents/MindCard";
+import { AskLauncher } from "@/components/chat/AskLauncher";
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -79,6 +80,11 @@ export default function DashboardPage() {
           }
         />
       )}
+
+      <AskLauncher
+        title="Ask your memory"
+        suggestions={["What's on my plate today?", "Who should I follow up with?", "What did I learn this week?"]}
+      />
     </>
   );
 }

@@ -22,6 +22,7 @@ export function buildSchemaSql(vectorDim: number): string {
 
   return `
 -- Drop existing objects so this is a clean, idempotent reset.
+DROP TABLE IF EXISTS ingest_runs CASCADE;
 DROP TABLE IF EXISTS blackboard CASCADE;
 DROP TABLE IF EXISTS retention CASCADE;
 DROP TABLE IF EXISTS open_loops CASCADE;
@@ -57,6 +58,8 @@ CREATE TABLE oauth_accounts (
   refresh_token       text,   -- AES-256-GCM ciphertext
   expires_at          timestamptz,
   scope               text,
+  email               text,   -- account identity (for the UI), from the OAuth profile
+  display_name        text,   -- account display name, from the OAuth profile
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now(),
   UNIQUE (provider, provider_account_id)
@@ -74,17 +77,28 @@ CREATE TABLE sessions (
 CREATE INDEX sessions_user_idx ON sessions (user_id);
 
 -- sources: a connector (gmail, calendar, ...) owned by a user.
+-- oauth_account_id binds an OAuth-backed source (gmail/gcal/gcontacts) to the
+-- specific connected account it pulls from. ON DELETE SET NULL so disconnecting
+-- an account never silently deletes the source (it falls back / fails loudly).
 CREATE TABLE sources (
-  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  kind         text NOT NULL,
-  display_name text NOT NULL,
-  scope        text NOT NULL DEFAULT 'personal',
-  sensitive    boolean NOT NULL DEFAULT false,
-  config       jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at   timestamptz NOT NULL DEFAULT now()
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind             text NOT NULL,
+  display_name     text NOT NULL,
+  scope            text NOT NULL DEFAULT 'personal',
+  sensitive        boolean NOT NULL DEFAULT false,
+  config           jsonb NOT NULL DEFAULT '{}'::jsonb,
+  oauth_account_id uuid REFERENCES oauth_accounts(id) ON DELETE SET NULL,
+  -- Per-app permission DEFINITIONS. Only read (ingestion) is enforced today;
+  -- write/delete are declarations for the future write/action layer (Drafter)
+  -- and mode is autonomous|approval. Deleting here means deleting data at the
+  -- SOURCE (an email, a note), never deleting memory.
+  permissions      jsonb NOT NULL DEFAULT
+                     '{"read":true,"write":false,"delete":false,"mode":"approval"}'::jsonb,
+  created_at       timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX sources_user_idx ON sources (user_id);
+CREATE INDEX sources_oauth_account_idx ON sources (oauth_account_id);
 
 -- entities: graph nodes (person/place/org/project)
 CREATE TABLE entities (
@@ -248,6 +262,24 @@ CREATE TABLE blackboard (
 );
 CREATE INDEX blackboard_salience_idx ON blackboard (user_id, status, salience DESC);
 CREATE INDEX blackboard_entity_idx ON blackboard (entity_id);
+
+-- ingest_runs: live status of an ingestion job for a source, so the UI can show
+-- real progress (counts + a sample of recently-ingested item titles) instead of
+-- an optimistic guess. One row per /sources/:id/ingest invocation.
+CREATE TABLE ingest_runs (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source_id   uuid NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  status      text NOT NULL DEFAULT 'queued'
+                CHECK (status IN ('queued', 'running', 'done', 'error')),
+  ingested    integer NOT NULL DEFAULT 0,   -- episodes recorded so far
+  total       integer,                      -- items pulled (known once running)
+  items       jsonb NOT NULL DEFAULT '[]'::jsonb,  -- sample of recent {title, kind}
+  error       text,
+  started_at  timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz
+);
+CREATE INDEX ingest_runs_source_idx ON ingest_runs (source_id, started_at DESC);
 `;
 }
 

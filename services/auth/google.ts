@@ -1,10 +1,27 @@
 import type { AppConfig } from "../config/index.js";
 import {
-  getOauthAccount,
+  getFirstOauthAccount,
   updateOauthTokens,
   type Db,
+  type OauthAccount,
 } from "../db/index.js";
 import { decryptToken, encryptToken } from "./crypto.js";
+import { buildOauthWebCallbackUrl } from "./handoff.js";
+
+/**
+ * Thrown when a Google account's refresh token is revoked/expired and a token
+ * can no longer be obtained — the user must re-consent. Carries the account id
+ * so callers can flag it.
+ */
+export class GoogleReauthRequiredError extends Error {
+  readonly accountId: string;
+  constructor(accountId: string, cause?: unknown) {
+    super(`Google account ${accountId} needs re-authorization`);
+    this.name = "GoogleReauthRequiredError";
+    this.accountId = accountId;
+    if (cause !== undefined) this.cause = cause;
+  }
+}
 
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
@@ -48,21 +65,38 @@ export function buildWebHandoffUrl(
   webOrigin: string,
   tokens: { accessToken: string; refreshToken: string },
 ): string {
-  const origin = webOrigin.split(",")[0]?.trim().replace(/\/+$/, "") ?? "";
-  if (!origin || origin === "*") {
-    throw new Error(
-      "Web OAuth hand-off requires a concrete WEB_ORIGIN (not empty or '*')",
-    );
-  }
-  const fragment = new URLSearchParams({
+  return buildWebCallbackUrl(webOrigin, {
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
-  }).toString();
-  return `${origin}/auth/google/callback#${fragment}`;
+  });
 }
 
-/** Build the consent URL. `state` is a signed CSRF nonce. */
-export function buildGoogleAuthUrl(config: GoogleConfig, state: string): string {
+/**
+ * Build a redirect to the SPA's Google OAuth callback with arbitrary params in
+ * the URL fragment. Used for the link flow, which carries an outcome
+ * (`linked=1` / `error=…`) rather than tokens.
+ */
+export function buildWebCallbackUrl(
+  webOrigin: string,
+  fragmentParams: Record<string, string>,
+): string {
+  return buildOauthWebCallbackUrl(webOrigin, "/auth/google/callback", fragmentParams);
+}
+
+/**
+ * Build the consent URL. `state` is a signed CSRF nonce.
+ *
+ * `prompt=consent select_account` lets the user pick a *different* Google
+ * account (required to connect a second one) and still re-issues a refresh
+ * token on re-consent. `include_granted_scopes` makes re-consent incremental,
+ * so granting Calendar to an account that already gave Gmail keeps Gmail.
+ * `opts.loginHint` pre-targets a known account (used by "Add services").
+ */
+export function buildGoogleAuthUrl(
+  config: GoogleConfig,
+  state: string,
+  opts?: { loginHint?: string },
+): string {
   const { id } = requireClient(config);
   const params = new URLSearchParams({
     client_id: id,
@@ -70,9 +104,11 @@ export function buildGoogleAuthUrl(config: GoogleConfig, state: string): string 
     response_type: "code",
     scope: SCOPES.join(" "),
     access_type: "offline", // get a refresh token
-    prompt: "consent",
+    prompt: "consent select_account",
+    include_granted_scopes: "true",
     state,
   });
+  if (opts?.loginHint) params.set("login_hint", opts.loginHint);
   return `${AUTH_URL}?${params.toString()}`;
 }
 
@@ -158,18 +194,17 @@ async function refreshAccessToken(
 }
 
 /**
- * Return a valid (decrypted) Google access token for a user, refreshing and
- * re-persisting it if it has expired (or is about to). Throws if the user has
- * not connected Google.
+ * Return a valid (decrypted) Google access token for a SPECIFIC connected
+ * account, refreshing and re-persisting it if it has expired (or is about to).
+ * Throws `GoogleReauthRequiredError` if the refresh token is revoked/expired.
  */
-export async function getValidGoogleAccessToken(
+export async function getValidGoogleAccessTokenForAccount(
   db: Db,
   config: GoogleConfig,
-  userId: string,
+  account: OauthAccount,
 ): Promise<string> {
-  const account = await getOauthAccount(db, userId, "google");
-  if (!account || !account.access_token) {
-    throw new Error("Google account not connected for this user");
+  if (!account.access_token) {
+    throw new GoogleReauthRequiredError(account.id);
   }
 
   const notExpired =
@@ -183,13 +218,36 @@ export async function getValidGoogleAccessToken(
     return decryptToken(account.access_token, config.TOKEN_ENC_KEY);
   }
 
-  const refreshed = await refreshAccessToken(
-    config,
-    decryptToken(account.refresh_token, config.TOKEN_ENC_KEY),
-  );
+  let refreshed: { accessToken: string; expiresAt: Date | null };
+  try {
+    refreshed = await refreshAccessToken(
+      config,
+      decryptToken(account.refresh_token, config.TOKEN_ENC_KEY),
+    );
+  } catch (err) {
+    // A revoked/expired refresh token (Google 400 invalid_grant) is terminal:
+    // surface it as a typed re-auth signal rather than a generic failure.
+    throw new GoogleReauthRequiredError(account.id, err);
+  }
   await updateOauthTokens(db, account.id, {
     accessToken: encryptToken(refreshed.accessToken, config.TOKEN_ENC_KEY),
     expiresAt: refreshed.expiresAt,
   });
   return refreshed.accessToken;
+}
+
+/**
+ * Legacy/fallback resolver: a valid Google access token for the user's first
+ * connected Google account. Used by sources with no explicit account binding.
+ */
+export async function getValidGoogleAccessToken(
+  db: Db,
+  config: GoogleConfig,
+  userId: string,
+): Promise<string> {
+  const account = await getFirstOauthAccount(db, userId, "google");
+  if (!account) {
+    throw new Error("Google account not connected for this user");
+  }
+  return getValidGoogleAccessTokenForAccount(db, config, account);
 }

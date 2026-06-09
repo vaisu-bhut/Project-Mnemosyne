@@ -1,5 +1,7 @@
 import {
   createOpenLoop,
+  getFirstOauthAccount,
+  getOauthAccountById,
   insertEdge,
   updateSourceConfig,
   type Db,
@@ -24,6 +26,21 @@ export interface IngestDeps {
 export interface IngestSummary {
   ingested: number;
   episodeIds: string[];
+}
+
+/** Live progress reported as the pipeline records each episode. */
+export interface IngestProgress {
+  /** Episodes recorded so far. */
+  ingested: number;
+  /** Total items pulled this run (known before the loop). */
+  total: number;
+  /** The item just recorded (for a live "what's being ingested" feed). */
+  lastItem: { title: string | null; kind: string };
+}
+
+export interface RunIngestOptions {
+  /** Called after each episode is recorded; await is honored (DB write OK). */
+  onProgress?: (p: IngestProgress) => void | Promise<void>;
 }
 
 /** Sanitize an external id into an artifact key segment. */
@@ -98,6 +115,7 @@ export async function runIngest(
   deps: IngestDeps,
   source: Source,
   connector: Connector,
+  opts: RunIngestOptions = {},
 ): Promise<IngestSummary> {
   await deps.store.init();
 
@@ -155,6 +173,12 @@ export async function runIngest(
     if (item.participants?.length) {
       await linkParticipants(deps, source.user_id, episode.id, item.participants);
     }
+
+    await opts.onProgress?.({
+      ingested: episodeIds.length,
+      total: items.length,
+      lastItem: { title: item.title ?? null, kind: item.kind },
+    });
   }
 
   // Persist the advanced cursor for the next incremental run.
@@ -289,12 +313,21 @@ export async function connectorForSource(
   }
 
   if (source.kind === "gmail" || source.kind === "gcal" || source.kind === "gcontacts") {
-    // Use the owner's Google tokens (refreshed if needed).
-    const { getValidGoogleAccessToken } = await import("../auth/google.js");
-    const accessToken = await getValidGoogleAccessToken(
+    // Resolve the connected account this source is bound to (falling back to
+    // the user's first Google account for legacy/unbound sources), then get a
+    // valid token for it (refreshed if needed).
+    const account = source.oauth_account_id
+      ? ((await getOauthAccountById(deps.db, source.user_id, source.oauth_account_id)) ??
+        (await getFirstOauthAccount(deps.db, source.user_id, "google")))
+      : await getFirstOauthAccount(deps.db, source.user_id, "google");
+    if (!account) {
+      throw new Error("Google account not connected for this source");
+    }
+    const { getValidGoogleAccessTokenForAccount } = await import("../auth/google.js");
+    const accessToken = await getValidGoogleAccessTokenForAccount(
       deps.db,
       deps.config,
-      source.user_id,
+      account,
     );
     if (source.kind === "gmail") {
       const { createGmailConnector } = await import("./gmail.js");
@@ -313,6 +346,45 @@ export async function connectorForSource(
     }
     const { createCalendarConnector } = await import("./gcal.js");
     return createCalendarConnector({
+      accessToken,
+      daysPast: deps.config.CALENDAR_DAYS_PAST,
+      daysFuture: deps.config.CALENDAR_DAYS_FUTURE,
+      maxEvents: deps.config.CALENDAR_MAX_EVENTS,
+    });
+  }
+
+  if (source.kind === "msmail" || source.kind === "mscal" || source.kind === "mscontacts") {
+    // Resolve the connected Microsoft account this source is bound to (falling
+    // back to the user's first Microsoft account for unbound sources).
+    const account = source.oauth_account_id
+      ? ((await getOauthAccountById(deps.db, source.user_id, source.oauth_account_id)) ??
+        (await getFirstOauthAccount(deps.db, source.user_id, "microsoft")))
+      : await getFirstOauthAccount(deps.db, source.user_id, "microsoft");
+    if (!account) {
+      throw new Error("Microsoft account not connected for this source");
+    }
+    const { getValidMicrosoftAccessTokenForAccount } = await import("../auth/microsoft.js");
+    const accessToken = await getValidMicrosoftAccessTokenForAccount(
+      deps.db,
+      deps.config,
+      account,
+    );
+    if (source.kind === "msmail") {
+      const { createOutlookMailConnector } = await import("./outlookMail.js");
+      return createOutlookMailConnector({
+        accessToken,
+        maxMessages: deps.config.OUTLOOK_MAX_MESSAGES,
+      });
+    }
+    if (source.kind === "mscontacts") {
+      const { createOutlookContactsConnector } = await import("./outlookContacts.js");
+      return createOutlookContactsConnector({
+        accessToken,
+        maxContacts: deps.config.CONTACTS_MAX_RESULTS,
+      });
+    }
+    const { createOutlookCalendarConnector } = await import("./outlookCalendar.js");
+    return createOutlookCalendarConnector({
       accessToken,
       daysPast: deps.config.CALENDAR_DAYS_PAST,
       daysFuture: deps.config.CALENDAR_DAYS_FUTURE,

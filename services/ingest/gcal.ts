@@ -90,10 +90,26 @@ export function createCalendarConnector(opts: CalendarConnectorOptions): Connect
   const daysFuture = opts.daysFuture ?? 30;
   const authHeader = { Authorization: `Bearer ${opts.accessToken}` };
 
-  async function api<T>(qs: URLSearchParams): Promise<{ ok: boolean; status: number; body: T }> {
+  async function api<T>(
+    qs: URLSearchParams,
+  ): Promise<{ ok: boolean; status: number; body: T; error?: string }> {
     const res = await doFetch(`${CAL_API}?${qs.toString()}`, { headers: authHeader });
-    const body = res.ok ? ((await res.json()) as T) : (undefined as T);
-    return { ok: res.ok, status: res.status, body };
+    if (!res.ok) {
+      const error = await res.text().catch(() => "");
+      return { ok: false, status: res.status, body: undefined as T, error };
+    }
+    return { ok: true, status: res.status, body: (await res.json()) as T };
+  }
+
+  /**
+   * Surface a hard API failure instead of silently ingesting nothing. A 403
+   * usually means the Calendar API isn't enabled for the OAuth client's project;
+   * 401 means the token was rejected.
+   */
+  function failHard(status: number, error: string | undefined): never {
+    throw new Error(
+      `Calendar API error (${status}): ${error?.slice(0, 500) ?? "request failed"}`,
+    );
   }
 
   function windowParams(): URLSearchParams {
@@ -122,9 +138,9 @@ export function createCalendarConnector(opts: CalendarConnectorOptions): Connect
     do {
       const qs = new URLSearchParams(initial);
       if (pageToken) qs.set("pageToken", pageToken);
-      const { ok, status, body } = await api<EventsResponse>(qs);
+      const { ok, status, body, error } = await api<EventsResponse>(qs);
       if (status === 410) return "expired";
-      if (!ok) break;
+      if (!ok) failHard(status, error);
       for (const ev of body.items ?? []) {
         if (ev.status !== "cancelled") events.push(ev);
       }

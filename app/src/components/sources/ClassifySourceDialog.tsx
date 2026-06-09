@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useClassifySource } from "@/hooks/useSources";
-import type { Source } from "@/lib/api/types";
+import { DEFAULT_PERMISSIONS, type Source, type SourcePermissions } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
 import { SCOPE_OPTIONS } from "./kindMeta";
+import { PermissionsEditor } from "./PermissionsEditor";
 import {
   Dialog,
   DialogContent,
@@ -46,6 +47,9 @@ export function ClassifySourceDialog({
 function ClassifyForm({ source, onDone }: { source: Source; onDone: () => void }) {
   const [scope, setScope] = useState(source.scope);
   const [sensitive, setSensitive] = useState(source.sensitive);
+  const [permissions, setPermissions] = useState<SourcePermissions>(
+    source.permissions ?? DEFAULT_PERMISSIONS,
+  );
   const classify = useClassifySource();
 
   const scopeOptions = SCOPE_OPTIONS.includes(scope as (typeof SCOPE_OPTIONS)[number])
@@ -55,8 +59,8 @@ function ClassifyForm({ source, onDone }: { source: Source; onDone: () => void }
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await classify.mutateAsync({ id: source.id, input: { scope, sensitive } });
-      toast.success("Privacy updated");
+      await classify.mutateAsync({ id: source.id, input: { scope, sensitive, permissions } });
+      toast.success("Connector settings updated");
       onDone();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to update");
@@ -66,9 +70,9 @@ function ClassifyForm({ source, onDone }: { source: Source; onDone: () => void }
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Privacy classification</DialogTitle>
+        <DialogTitle>Connector settings</DialogTitle>
         <DialogDescription>
-          {source.displayName} — controls Guardian visibility per mode.
+          {source.displayName} — Guardian visibility and per-app permissions.
         </DialogDescription>
       </DialogHeader>
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
@@ -96,6 +100,7 @@ function ClassifyForm({ source, onDone }: { source: Source; onDone: () => void }
           />
           Sensitive (encrypted at rest; hidden in guest mode)
         </label>
+        <PermissionsEditor value={permissions} onChange={setPermissions} />
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onDone}>
             Cancel

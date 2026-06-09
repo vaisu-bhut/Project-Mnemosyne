@@ -51,6 +51,81 @@ export async function insertFact(db: Db, input: InsertFactInput): Promise<Fact> 
     .executeTakeFirstOrThrow();
 }
 
+export interface ListFactsOptions {
+  limit?: number;
+  offset?: number;
+  status?: FactStatus;
+  /** Restrict to facts whose subject is this entity. */
+  subjectId?: string;
+  /** Guardian-hidden sources to exclude in this context. */
+  excludeSourceIds?: string[];
+}
+
+/** List a user's facts, most-reinforced first (for the Facts browser). */
+export async function listFacts(
+  db: Db,
+  userId: string,
+  opts: ListFactsOptions = {},
+): Promise<Fact[]> {
+  let q = db.selectFrom("facts").selectAll().where("user_id", "=", userId);
+  if (opts.status) q = q.where("status", "=", opts.status);
+  if (opts.subjectId) q = q.where("subject_id", "=", opts.subjectId);
+  if (opts.excludeSourceIds && opts.excludeSourceIds.length) {
+    q = q.where("source_id", "not in", opts.excludeSourceIds);
+  }
+  return q
+    .orderBy("reinforced", "desc")
+    .orderBy("learned_at", "desc")
+    .limit(opts.limit ?? 50)
+    .offset(opts.offset ?? 0)
+    .execute();
+}
+
+export interface UpdateFactInput {
+  statement?: string;
+  status?: FactStatus;
+}
+
+/** Edit a derived fact (statement and/or status). Owner-scoped. Episodes — the
+ * proof — are never touched; only the interpretation changes. */
+export async function updateFact(
+  db: Db,
+  userId: string,
+  id: string,
+  patch: UpdateFactInput,
+): Promise<Fact | undefined> {
+  return db
+    .updateTable("facts")
+    .set({
+      ...(patch.statement !== undefined ? { statement: patch.statement } : {}),
+      ...(patch.status !== undefined ? { status: patch.status } : {}),
+    })
+    .where("id", "=", id)
+    .where("user_id", "=", userId)
+    .returningAll()
+    .executeTakeFirst();
+}
+
+/** Delete a derived fact (owner-scoped). First clears any `contradicts` pointers
+ * referencing it (FK), then removes the row. The source episode remains as
+ * proof, so removing the interpretation is safe. Returns whether a row went. */
+export async function deleteFact(db: Db, userId: string, id: string): Promise<boolean> {
+  return db.transaction().execute(async (trx) => {
+    await trx
+      .updateTable("facts")
+      .set({ contradicts: null })
+      .where("user_id", "=", userId)
+      .where("contradicts", "=", id)
+      .execute();
+    const res = await trx
+      .deleteFrom("facts")
+      .where("id", "=", id)
+      .where("user_id", "=", userId)
+      .executeTakeFirst();
+    return Number(res.numDeletedRows ?? 0n) > 0;
+  });
+}
+
 /**
  * Reinforce a fact: bump the `reinforced` counter and stamp last_confirmed=now().
  * This is how repeatedly-observed facts gain trust over time.

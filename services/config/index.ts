@@ -104,6 +104,19 @@ const EnvSchema = z.object({
     .default("http://localhost:3000/auth/google/callback"),
   GMAIL_MAX_MESSAGES: z.coerce.number().int().positive().default(25),
   GMAIL_QUERY: z.string().default("newer_than:30d"),
+
+  // --- Microsoft OAuth + Outlook (create an app registration in Entra ID) ---
+  // Mail.Read / Calendars.Read / Contacts.Read via Microsoft Graph. TENANT is
+  // "common" for multi-tenant + personal accounts (or a specific tenant id).
+  MICROSOFT_CLIENT_ID: z.string().optional(),
+  MICROSOFT_CLIENT_SECRET: z.string().optional(),
+  MICROSOFT_TENANT: z.string().default("common"),
+  MICROSOFT_REDIRECT_URI: z
+    .string()
+    .url()
+    .default("http://localhost:3000/auth/microsoft/callback"),
+  // Cap on Outlook messages pulled per ingest run.
+  OUTLOOK_MAX_MESSAGES: z.coerce.number().int().positive().default(25),
   // Calendar ingestion window (days back / forward) and per-run cap.
   CALENDAR_DAYS_PAST: z.coerce.number().int().min(0).default(7),
   CALENDAR_DAYS_FUTURE: z.coerce.number().int().min(0).default(30),

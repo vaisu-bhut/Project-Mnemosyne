@@ -2,7 +2,16 @@ import "dotenv/config";
 import { Queue, Worker } from "bullmq";
 import { Redis } from "ioredis";
 import { getConfig } from "../config/index.js";
-import { createDb, listUserIds, updateSourceConfig } from "../db/index.js";
+import {
+  clearSourceReauth,
+  createDb,
+  listUserIds,
+  updateIngestRun,
+  updateSourceConfig,
+  type IngestRunItem,
+} from "../db/index.js";
+import { GoogleReauthRequiredError } from "../auth/google.js";
+import { MicrosoftReauthRequiredError } from "../auth/microsoft.js";
 import { createEmbedder } from "../embeddings/index.js";
 import { createExtractor } from "../extract/index.js";
 import { createGenerator } from "../llm/index.js";
@@ -37,14 +46,51 @@ const consolidateQueue = new Queue<ConsolidateJob>(QUEUES.consolidate, { connect
 const nudgeQueue = new Queue<NudgeJob>(QUEUES.nudge, { connection });
 
 // --- ingest: pull a source, create episodes, fan out extraction jobs --------
+// OAuth-backed kinds whose access can be revoked → flag needsReauth on failure.
+const OAUTH_SOURCE_KINDS = new Set([
+  "gmail",
+  "gcal",
+  "gcontacts",
+  "msmail",
+  "mscal",
+  "mscontacts",
+]);
+
+// Distinguish a genuine re-auth failure (revoked/expired token, 401) from any
+// other ingest error (e.g. an embedding 429, a disabled API) — only the former
+// should flag the source as needing re-connection.
+function isReauthError(err: unknown): boolean {
+  if (err instanceof GoogleReauthRequiredError || err instanceof MicrosoftReauthRequiredError) {
+    return true;
+  }
+  const msg = err instanceof Error ? err.message : "";
+  return /\(401\)/.test(msg) || /invalid_grant/i.test(msg);
+}
+
+// Best-effort ingest_runs update — never let progress tracking break ingestion.
+async function patchRun(runId: string | undefined, patch: Parameters<typeof updateIngestRun>[2]) {
+  if (!runId) return;
+  try {
+    await updateIngestRun(db, runId, patch);
+  } catch (err) {
+    console.error(`[worker] failed to update ingest_run ${runId}:`, err);
+  }
+}
+
 const ingestWorker = new Worker<IngestJob>(
   QUEUES.ingest,
   async (job) => {
+    const { runId } = job.data;
     const source = await db
       .selectFrom("sources")
       .selectAll()
       .where("id", "=", job.data.sourceId)
       .executeTakeFirstOrThrow();
+
+    await patchRun(runId, { status: "running" });
+    // Keep a rolling sample of the most recent item titles for the live feed.
+    const sample: IngestRunItem[] = [];
+
     let summary;
     try {
       const connector = await connectorForSource(source, { db, config });
@@ -52,18 +98,44 @@ const ingestWorker = new Worker<IngestJob>(
         { db, store, embedder, encKey: config.TOKEN_ENC_KEY },
         source,
         connector,
+        {
+          onProgress: async ({ ingested, total, lastItem }) => {
+            sample.unshift(lastItem);
+            if (sample.length > 8) sample.pop();
+            await patchRun(runId, { ingested, total, items: [...sample] });
+          },
+        },
       );
     } catch (err) {
-      // OAuth-backed sources can lose access (revoked/expired). Flag the source
-      // so the user can re-connect, and fail the job for retry/visibility.
-      if (source.kind === "gmail" || source.kind === "gcal" || source.kind === "gcontacts") {
+      // Only flag re-auth when the failure is genuinely an auth problem
+      // (revoked/expired token, 401) — not for e.g. an embedding 429 or a
+      // disabled API, which would otherwise mislead the user into reconnecting.
+      if (OAUTH_SOURCE_KINDS.has(source.kind) && isReauthError(err)) {
         await updateSourceConfig(db, source.id, {
           ...(source.config as Record<string, unknown>),
           needsReauth: true,
         });
       }
+      await patchRun(runId, {
+        status: "error",
+        error: err instanceof Error ? err.message : String(err),
+        finishedAt: new Date(),
+      });
       throw err;
     }
+
+    // A clean run means the connection works — clear any stale reauth flag.
+    if (OAUTH_SOURCE_KINDS.has(source.kind)) {
+      await clearSourceReauth(db, source.id).catch(() => {});
+    }
+
+    await patchRun(runId, {
+      status: "done",
+      ingested: summary.ingested,
+      total: summary.ingested,
+      finishedAt: new Date(),
+    });
+
     for (const episodeId of summary.episodeIds) {
       await extractQueue.add("extract", { episodeId, sourceId: source.id });
     }

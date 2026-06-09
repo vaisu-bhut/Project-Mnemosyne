@@ -7,16 +7,28 @@ import type { AppConfig } from "../config/index.js";
 import {
   classifySource,
   createDb,
+  createIngestRun,
   createSource,
+  deleteFact,
+  deleteOauthAccount,
   dismissBlackboard,
+  getLatestIngestRun,
+  getOauthAccountById,
   getSource,
+  listEpisodes,
+  listFacts,
   listMind,
+  listOauthAccounts,
   listOpenLoops,
   listSources,
+  updateFact,
   type Db,
   type LoopStatus,
+  type OauthAccount,
 } from "../db/index.js";
-import type { AccessContext, Mode } from "../guardian/index.js";
+import { servicesFromScope } from "../auth/scopes.js";
+import { resolveVisibility, type AccessContext, type Mode } from "../guardian/index.js";
+import { decryptText } from "../auth/crypto.js";
 import {
   briefEntity,
   relationshipHealthAll,
@@ -74,13 +86,49 @@ async function probe(fn: () => Promise<unknown>): Promise<boolean> {
   }
 }
 
+const PermissionsField = z.object({
+  read: z.boolean(),
+  write: z.boolean(),
+  delete: z.boolean(),
+  mode: z.enum(["autonomous", "approval"]),
+});
 const CreateSourceBody = z.object({
   kind: z.string().min(1),
   displayName: z.string().min(1),
   scope: z.string().optional(),
   sensitive: z.boolean().optional(),
   config: z.record(z.unknown()).optional(),
+  permissions: PermissionsField.optional(),
+  oauthAccountId: z.string().uuid().optional(),
 });
+
+// OAuth-backed source kinds → the provider whose account they pull from.
+const OAUTH_KIND_PROVIDER: Record<string, string> = {
+  gmail: "google",
+  gcal: "google",
+  gcontacts: "google",
+  msmail: "microsoft",
+  mscal: "microsoft",
+  mscontacts: "microsoft",
+};
+
+/** Shape a connected account for the API (never exposes tokens). */
+function toAccountView(a: OauthAccount) {
+  const expired = !a.expires_at || a.expires_at.getTime() < Date.now();
+  return {
+    id: a.id,
+    provider: a.provider,
+    email: a.email,
+    displayName: a.display_name,
+    providerAccountId: a.provider_account_id,
+    services: servicesFromScope(a.scope),
+    scopeRaw: a.scope,
+    expiresAt: a.expires_at ? a.expires_at.toISOString() : null,
+    // Heuristic (no network probe): can't mint a token without a refresh token
+    // once the access token has expired.
+    needsReauth: !a.refresh_token && expired,
+  };
+}
 const ModeField = {
   mode: z.enum(["default", "work", "guest"]).optional(),
   includeSensitive: z.boolean().optional(),
@@ -90,9 +138,22 @@ const SearchBody = z.object({
   k: z.number().int().positive().max(50).optional(),
   ...ModeField,
 });
+const ScopeField = z
+  .object({
+    entityId: z.string().uuid().optional(),
+    sourceId: z.string().uuid().optional(),
+    kind: z.string().min(1).optional(),
+  })
+  .optional();
 const AskBody = z.object({
   question: z.string().min(1),
   k: z.number().int().positive().max(50).optional(),
+  // Page-context chat: bias retrieval + carry conversation history.
+  scope: ScopeField,
+  history: z
+    .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1) }))
+    .max(20)
+    .optional(),
   ...ModeField,
 });
 const ConductBody = z.object({ query: z.string().min(1), ...ModeField });
@@ -106,10 +167,58 @@ const RetentionBody = z.object({
 const ClassifyBody = z.object({
   sensitive: z.boolean().optional(),
   scope: z.string().min(1).optional(),
+  permissions: PermissionsField.optional(),
+});
+const UpdateFactBody = z.object({
+  statement: z.string().min(1).optional(),
+  status: z.enum(["active", "stale", "retracted"]).optional(),
+});
+
+// Query params arrive as strings; coerce. includeSensitive must NOT use
+// z.coerce.boolean (which treats "false" as truthy) — map it explicitly.
+const boolParam = z.enum(["true", "false"]).transform((v) => v === "true");
+const EpisodesQuery = z.object({
+  limit: z.coerce.number().int().positive().max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+  kind: z.string().min(1).optional(),
+  sourceId: z.string().uuid().optional(),
+  mode: z.enum(["default", "work", "guest"]).optional(),
+  includeSensitive: boolParam.optional(),
+});
+const FactsQuery = z.object({
+  limit: z.coerce.number().int().positive().max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+  status: z.enum(["active", "stale", "retracted"]).optional(),
+  subjectId: z.string().uuid().optional(),
+  mode: z.enum(["default", "work", "guest"]).optional(),
+  includeSensitive: boolParam.optional(),
 });
 
 function accessContext(body: { mode?: Mode; includeSensitive?: boolean }): AccessContext {
   return { mode: body.mode, includeSensitive: body.includeSensitive };
+}
+
+/** Build a plaintext snippet from an episode body, decrypting the sensitive
+ * tier when authorized (mirrors memory/retrieve.ts). Returns null if withheld. */
+function bodySnippet(
+  body: string | null,
+  meta: unknown,
+  encKey: string | undefined,
+  max = 200,
+): string | null {
+  if (body == null) return null;
+  const encrypted = (meta as { encrypted?: boolean })?.encrypted === true;
+  let text = body;
+  if (encrypted) {
+    if (!encKey) return null;
+    try {
+      text = decryptText(body, encKey);
+    } catch {
+      return null;
+    }
+  }
+  const s = text.replace(/\s+/g, " ").trim();
+  return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
 // Paths reachable without a valid access token.
@@ -161,6 +270,24 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   // Register a connector/source owned by the caller.
   app.post("/sources", async (req, reply) => {
     const body = CreateSourceBody.parse(req.body);
+    const expectedProvider = OAUTH_KIND_PROVIDER[body.kind];
+
+    if (body.oauthAccountId !== undefined) {
+      if (!expectedProvider) {
+        reply.code(400);
+        return { error: `source kind "${body.kind}" does not use a connected account` };
+      }
+      const acct = await getOauthAccountById(db, req.user!.id, body.oauthAccountId);
+      if (!acct) {
+        reply.code(400);
+        return { error: "oauthAccountId not found for this user" };
+      }
+      if (acct.provider !== expectedProvider) {
+        reply.code(400);
+        return { error: `oauthAccountId is not a ${expectedProvider} account` };
+      }
+    }
+
     const source = await createSource(db, { userId: req.user!.id, ...body });
     reply.code(201);
     return source;
@@ -168,6 +295,23 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   // List the caller's sources (with privacy classification).
   app.get("/sources", async (req) => listSources(db, req.user!.id));
+
+  // List the caller's connected OAuth accounts + the services each granted.
+  app.get("/accounts", async (req) => {
+    const accounts = await listOauthAccounts(db, req.user!.id);
+    return accounts.map(toAccountView);
+  });
+
+  // Disconnect a connected account. Bound sources survive (oauth_account_id is
+  // set to NULL by the FK) and fall back to another account or fail at ingest.
+  app.delete<{ Params: { id: string } }>("/accounts/:id", async (req, reply) => {
+    const ok = await deleteOauthAccount(db, req.user!.id, req.params.id);
+    if (!ok) {
+      reply.code(404);
+      return { error: "account not found" };
+    }
+    reply.code(204);
+  });
 
   // Classify a source for the Guardian (sensitive flag / scope).
   app.patch<{ Params: { id: string } }>("/sources/:id", async (req, reply) => {
@@ -180,16 +324,39 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     return source;
   });
 
-  // Trigger ingestion for one of the caller's sources.
+  // Trigger ingestion for one of the caller's sources. Opens an ingest_runs row
+  // (status 'queued') so the UI can show live progress, and passes its id to the
+  // worker via the job payload.
   app.post<{ Params: { id: string } }>("/sources/:id/ingest", async (req, reply) => {
     const source = await getSource(db, req.user!.id, req.params.id);
     if (!source) {
       reply.code(404);
       return { error: "source not found" };
     }
-    const job = await ingestQueue.add("ingest", { sourceId: source.id });
+    const run = await createIngestRun(db, req.user!.id, source.id);
+    const job = await ingestQueue.add("ingest", { sourceId: source.id, runId: run.id });
     reply.code(202);
-    return { jobId: job.id, sourceId: source.id };
+    return { jobId: job.id, sourceId: source.id, runId: run.id };
+  });
+
+  // Latest ingest run for a source (live status + recently-ingested item sample).
+  app.get<{ Params: { id: string } }>("/sources/:id/ingest-status", async (req, reply) => {
+    const run = await getLatestIngestRun(db, req.user!.id, req.params.id);
+    if (!run) {
+      reply.code(404);
+      return { error: "no ingest run for this source" };
+    }
+    return {
+      id: run.id,
+      sourceId: run.source_id,
+      status: run.status,
+      ingested: run.ingested,
+      total: run.total,
+      items: run.items,
+      error: run.error,
+      startedAt: run.started_at.toISOString(),
+      finishedAt: run.finished_at ? run.finished_at.toISOString() : null,
+    };
   });
 
   // Cited hybrid search over the caller's memory (Guardian-filtered by mode).
@@ -200,8 +367,85 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   // Grounded question answering with citations (Guardian-filtered by mode).
   app.post("/ask", async (req) => {
-    const { question, k, ...mode } = AskBody.parse(req.body);
-    return ask({ db, embedder: queryEmbedder, generator, encKey }, req.user!.id, question, k, accessContext(mode));
+    const { question, k, scope, history, ...mode } = AskBody.parse(req.body);
+    return ask(
+      { db, embedder: queryEmbedder, generator, encKey },
+      req.user!.id,
+      question,
+      k,
+      accessContext(mode),
+      { scope, history },
+    );
+  });
+
+  // Browse the caller's episodes (newest first, Guardian-filtered, paginated).
+  app.get("/episodes", async (req) => {
+    const q = EpisodesQuery.parse(req.query);
+    const { deniedSourceIds } = await resolveVisibility(db, req.user!.id, accessContext(q));
+    const rows = await listEpisodes(db, req.user!.id, {
+      limit: q.limit,
+      offset: q.offset,
+      kind: q.kind,
+      sourceId: q.sourceId,
+      excludeSourceIds: deniedSourceIds,
+    });
+    return rows.map((e) => ({
+      id: e.id,
+      occurredAt: e.occurred_at.toISOString(),
+      kind: e.kind,
+      title: e.title,
+      sourceId: e.source_id,
+      snippet: bodySnippet(e.body, e.meta, encKey),
+      artifactUri: e.artifact_uri,
+    }));
+  });
+
+  // Browse the caller's facts (most-reinforced first, Guardian-filtered, paginated).
+  app.get("/facts", async (req) => {
+    const q = FactsQuery.parse(req.query);
+    const { deniedSourceIds } = await resolveVisibility(db, req.user!.id, accessContext(q));
+    const rows = await listFacts(db, req.user!.id, {
+      limit: q.limit,
+      offset: q.offset,
+      status: q.status,
+      subjectId: q.subjectId,
+      excludeSourceIds: deniedSourceIds,
+    });
+    return rows.map((f) => ({
+      id: f.id,
+      statement: f.statement,
+      predicate: f.predicate,
+      subjectId: f.subject_id,
+      objectId: f.object_id,
+      status: f.status,
+      reinforced: f.reinforced,
+      confidence: f.confidence,
+      sourceEpisode: f.source_episode,
+      sourceId: f.source_id,
+      contradicts: f.contradicts,
+      learnedAt: f.learned_at.toISOString(),
+    }));
+  });
+
+  // Edit a derived fact (statement/status). Memory/episodes are never touched.
+  app.patch<{ Params: { id: string } }>("/facts/:id", async (req, reply) => {
+    const patch = UpdateFactBody.parse(req.body);
+    const fact = await updateFact(db, req.user!.id, req.params.id, patch);
+    if (!fact) {
+      reply.code(404);
+      return { error: "fact not found" };
+    }
+    return fact;
+  });
+
+  // Delete a derived fact (the source episode remains as proof).
+  app.delete<{ Params: { id: string } }>("/facts/:id", async (req, reply) => {
+    const ok = await deleteFact(db, req.user!.id, req.params.id);
+    if (!ok) {
+      reply.code(404);
+      return { error: "fact not found" };
+    }
+    reply.code(204);
   });
 
   // Open Loops dashboard.

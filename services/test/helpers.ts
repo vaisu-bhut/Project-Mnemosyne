@@ -37,7 +37,7 @@ export function testDb(): Db {
 export async function truncateAll(db: Db): Promise<void> {
   await sql`
     TRUNCATE users, sessions, oauth_accounts, sources, entities, episodes,
-             facts, edges, open_loops, retention, blackboard
+             facts, edges, open_loops, retention, blackboard, ingest_runs
     RESTART IDENTITY CASCADE
   `.execute(db);
 }

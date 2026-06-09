@@ -46,6 +46,8 @@ export interface OauthAccountsTable {
   refresh_token: NullableText;
   expires_at: NullableDate;
   scope: NullableText;
+  email: NullableText;
+  display_name: NullableText;
   created_at: Generated<Date>;
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 }
@@ -66,6 +68,8 @@ export interface SourcesTable {
   scope: ColumnType<string, string | undefined, string>;
   sensitive: ColumnType<boolean, boolean | undefined, boolean>;
   config: JsonbColumn;
+  oauth_account_id: NullableText;
+  permissions: JsonbColumn;
   created_at: Generated<Date>;
 }
 
@@ -163,6 +167,29 @@ export interface BlackboardTable {
   expires_at: NullableDate;
 }
 
+export type IngestRunStatus = "queued" | "running" | "done" | "error";
+
+/** A compact sample of a recently-ingested item (stored in ingest_runs.items). */
+export interface IngestRunItemRow {
+  title: string | null;
+  kind: string;
+}
+
+export interface IngestRunsTable {
+  id: Generated<string>;
+  user_id: string;
+  source_id: string;
+  status: ColumnType<IngestRunStatus, IngestRunStatus | undefined, IngestRunStatus>;
+  ingested: ColumnType<number, number | undefined, number>;
+  total: ColumnType<number | null, number | null | undefined, number | null>;
+  // jsonb array: read as a parsed array; written as a JSON string (pg serializes
+  // plain JS arrays as Postgres array literals, not jsonb, so we stringify).
+  items: ColumnType<IngestRunItemRow[], string | undefined, string>;
+  error: NullableText;
+  started_at: Generated<Date>;
+  finished_at: NullableDate;
+}
+
 export interface Database {
   users: UsersTable;
   oauth_accounts: OauthAccountsTable;
@@ -175,4 +202,5 @@ export interface Database {
   open_loops: OpenLoopsTable;
   retention: RetentionTable;
   blackboard: BlackboardTable;
+  ingest_runs: IngestRunsTable;
 }

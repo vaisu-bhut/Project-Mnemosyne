@@ -12,18 +12,31 @@ export {
   createSource,
   getSource,
   updateSourceConfig,
+  clearSourceReauth,
   listSources,
   classifySource,
   type Source,
   type CreateSourceInput,
+  type SourcePermissions,
 } from "./repositories/sources.js";
 export { upsertEntity, type Entity, type UpsertEntityInput } from "./repositories/entities.js";
-export { insertEpisode, type Episode, type InsertEpisodeInput } from "./repositories/episodes.js";
+export {
+  insertEpisode,
+  listEpisodes,
+  type Episode,
+  type InsertEpisodeInput,
+  type ListEpisodesOptions,
+} from "./repositories/episodes.js";
 export {
   insertFact,
+  listFacts,
   reinforceFact,
+  updateFact,
+  deleteFact,
   type Fact,
   type InsertFactInput,
+  type ListFactsOptions,
+  type UpdateFactInput,
 } from "./repositories/facts.js";
 export {
   insertEdge,
@@ -55,6 +68,15 @@ export {
 } from "./repositories/blackboard.js";
 export type { BlackboardStatus } from "./types.js";
 export {
+  createIngestRun,
+  updateIngestRun,
+  getLatestIngestRun,
+  type IngestRun,
+  type IngestRunItem,
+  type UpdateIngestRunInput,
+} from "./repositories/ingestRuns.js";
+export type { IngestRunStatus } from "./types.js";
+export {
   createUser,
   getUserByEmail,
   getUserById,
@@ -70,7 +92,14 @@ export {
 } from "./repositories/sessions.js";
 export {
   upsertOauthAccount,
+  linkOauthAccountForUser,
+  listOauthAccounts,
+  getOauthAccountById,
+  getFirstOauthAccount,
   getOauthAccount,
+  deleteOauthAccount,
   updateOauthTokens,
   type OauthAccount,
+  type UpsertOauthAccountInput,
+  type LinkOauthAccountResult,
 } from "./repositories/oauthAccounts.js";

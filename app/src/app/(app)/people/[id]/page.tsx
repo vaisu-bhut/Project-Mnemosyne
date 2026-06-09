@@ -11,6 +11,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { FullPageSpinner, Spinner } from "@/components/common/Spinner";
 import { BriefingView } from "@/components/people/BriefingView";
 import { Button } from "@/components/ui/button";
+import { AskLauncher } from "@/components/chat/AskLauncher";
 
 export default function PersonBriefPage() {
   const { id } = useParams<{ id: string }>();
@@ -55,6 +56,18 @@ export default function PersonBriefPage() {
       ) : brief.data ? (
         <BriefingView briefing={brief.data} />
       ) : null}
+
+      {brief.data && (
+        <AskLauncher
+          title={`Ask about ${brief.data.name}`}
+          scope={{ entityId: id }}
+          suggestions={[
+            `What's my relationship with ${brief.data.name}?`,
+            `What do I owe ${brief.data.name}?`,
+            `What should I follow up on with ${brief.data.name}?`,
+          ]}
+        />
+      )}
     </>
   );
 }

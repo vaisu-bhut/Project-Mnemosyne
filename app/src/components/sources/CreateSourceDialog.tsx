@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useCreateSource } from "@/hooks/useSources";
-import type { CreateSourceInput, SourceKind } from "@/lib/api/types";
+import { useAccounts } from "@/hooks/useAccounts";
+import { DEFAULT_PERMISSIONS, type CreateSourceInput, type SourceKind, type SourcePermissions } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
 import { KIND_META, SCOPE_OPTIONS } from "./kindMeta";
+import { PermissionsEditor } from "./PermissionsEditor";
 import {
   Dialog,
   DialogContent,
@@ -36,9 +38,19 @@ export function CreateSourceDialog({
   const [dir, setDir] = useState("examples/journal");
   const [scope, setScope] = useState<string>("personal");
   const [sensitive, setSensitive] = useState(false);
+  const [accountId, setAccountId] = useState<string>("");
+  const [permissions, setPermissions] = useState<SourcePermissions>(DEFAULT_PERMISSIONS);
   const create = useCreateSource();
+  const accounts = useAccounts();
 
   const meta = KIND_META[kind];
+  const providerAccounts = (accounts.data ?? []).filter((a) => a.provider === meta.oauth);
+
+  // Default the account picker to the only matching account when there's just one.
+  useEffect(() => {
+    if (!meta.oauth) return;
+    if (!accountId && providerAccounts.length === 1) setAccountId(providerAccounts[0]!.id);
+  }, [meta.oauth, accountId, providerAccounts]);
 
   function reset() {
     setKind("filesystem");
@@ -46,6 +58,8 @@ export function CreateSourceDialog({
     setDir("examples/journal");
     setScope("personal");
     setSensitive(false);
+    setAccountId("");
+    setPermissions(DEFAULT_PERMISSIONS);
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -55,12 +69,18 @@ export function CreateSourceDialog({
       toast.error("A directory is required for a filesystem source.");
       return;
     }
+    if (meta.oauth && !accountId) {
+      toast.error("Choose which connected account this source pulls from.");
+      return;
+    }
     const input: CreateSourceInput = {
       kind,
       displayName: name,
       scope,
       sensitive,
+      permissions,
       config: kind === "filesystem" ? { dir: dir.trim() } : {},
+      ...(meta.oauth && accountId ? { oauthAccountId: accountId } : {}),
     };
     try {
       await create.mutateAsync(input);
@@ -76,8 +96,8 @@ export function CreateSourceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add a source</DialogTitle>
-          <DialogDescription>Connect data to ingest into your memory.</DialogDescription>
+          <DialogTitle>New connector</DialogTitle>
+          <DialogDescription>Connect a data stream to ingest into your memory.</DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
@@ -122,10 +142,38 @@ export function CreateSourceDialog({
             </div>
           )}
 
-          {meta.google && (
-            <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-              Requires Google to be connected (see the panel on the Sources page).
-            </p>
+          {meta.oauth && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="account">Account</Label>
+              {providerAccounts.length > 0 ? (
+                <>
+                  <select
+                    id="account"
+                    className={selectClass}
+                    value={accountId}
+                    onChange={(e) => setAccountId(e.target.value)}
+                  >
+                    <option value="" disabled>
+                      Select a connected account…
+                    </option>
+                    {providerAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.email ?? a.displayName ?? a.providerAccountId}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Which connected {meta.oauth === "microsoft" ? "Microsoft" : "Google"} account
+                    this source ingests from.
+                  </p>
+                </>
+              ) : (
+                <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  No {meta.oauth === "microsoft" ? "Microsoft" : "Google"} account connected.
+                  Connect one in the Connected accounts section above first.
+                </p>
+              )}
+            </div>
           )}
 
           <div className="grid grid-cols-2 gap-4">
@@ -154,6 +202,8 @@ export function CreateSourceDialog({
               Sensitive
             </label>
           </div>
+
+          <PermissionsEditor value={permissions} onChange={setPermissions} />
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

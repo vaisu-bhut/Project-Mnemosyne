@@ -17,7 +17,33 @@ export interface AuthResponse {
   refreshToken: string;
 }
 
-export type SourceKind = "filesystem" | "gmail" | "gcal" | "gcontacts";
+export type SourceKind =
+  | "filesystem"
+  | "gmail"
+  | "gcal"
+  | "gcontacts"
+  | "msmail"
+  | "mscal"
+  | "mscontacts";
+
+export type OAuthProvider = "google" | "microsoft";
+
+/** Per-app permission definitions. Only `read` is enforced today (ingestion);
+ * `write`/`delete` are declarations for the future write/action layer.
+ * "delete" = deleting data at the source (email, note), never memory. */
+export interface SourcePermissions {
+  read: boolean;
+  write: boolean;
+  delete: boolean;
+  mode: "autonomous" | "approval";
+}
+
+export const DEFAULT_PERMISSIONS: SourcePermissions = {
+  read: true,
+  write: false,
+  delete: false,
+  mode: "approval",
+};
 
 /** A connector/source. Raw DB row (snake_case) camelized client-side. */
 export interface Source {
@@ -28,6 +54,8 @@ export interface Source {
   scope: string;
   sensitive: boolean;
   config: Record<string, unknown> | null;
+  oauthAccountId: string | null;
+  permissions: SourcePermissions;
   createdAt: string;
 }
 
@@ -37,11 +65,60 @@ export interface CreateSourceInput {
   scope?: string;
   sensitive?: boolean;
   config?: Record<string, unknown>;
+  /** For OAuth-backed kinds: which connected account this source pulls from. */
+  oauthAccountId?: string;
+  permissions?: SourcePermissions;
+}
+
+// --- Connected accounts (BACKEND.md §6; /accounts is camelCase) ---
+
+export interface ServiceInfo {
+  key: "gmail" | "mail" | "calendar" | "contacts" | "identity";
+  label: string;
+}
+
+/** A connected OAuth account + the services it granted. Never carries tokens. */
+export interface Account {
+  id: string;
+  provider: OAuthProvider;
+  email: string | null;
+  displayName: string | null;
+  providerAccountId: string;
+  services: ServiceInfo[];
+  scopeRaw: string | null;
+  expiresAt: string | null;
+  needsReauth: boolean;
 }
 
 export interface ClassifySourceInput {
   scope?: string;
   sensitive?: boolean;
+  permissions?: SourcePermissions;
+}
+
+export interface UpdateFactInput {
+  statement?: string;
+  status?: FactStatus;
+}
+
+export type IngestRunStatus = "queued" | "running" | "done" | "error";
+
+export interface IngestRunItem {
+  title: string | null;
+  kind: string;
+}
+
+/** Live status of an ingestion run (GET /sources/:id/ingest-status, camelCase). */
+export interface IngestRun {
+  id: string;
+  sourceId: string;
+  status: IngestRunStatus;
+  ingested: number;
+  total: number | null;
+  items: IngestRunItem[];
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
 }
 
 // --- Retrieval (BACKEND.md §6; /search and /ask are camelCase) ---
@@ -92,6 +169,72 @@ export interface Answer {
 
 export interface RetrieveInput {
   k?: number;
+  mode?: Mode;
+  includeSensitive?: boolean;
+}
+
+// --- Page-context chat ("ask your brain") ---
+
+/** Biases retrieval to a page's data (a person, a source, an episode kind). */
+export interface ChatScope {
+  entityId?: string;
+  sourceId?: string;
+  kind?: string;
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AskInput extends RetrieveInput {
+  scope?: ChatScope;
+  history?: ChatMessage[];
+}
+
+// --- Episodes & Facts browsers (GET /episodes, /facts; camelCase) ---
+
+export interface Episode {
+  id: string;
+  occurredAt: string;
+  kind: string;
+  title: string | null;
+  sourceId: string;
+  snippet: string | null;
+  artifactUri: string | null;
+}
+
+export type FactStatus = "active" | "stale" | "retracted";
+
+export interface Fact {
+  id: string;
+  statement: string;
+  predicate: string | null;
+  subjectId: string;
+  objectId: string | null;
+  status: FactStatus;
+  reinforced: number;
+  confidence: number;
+  sourceEpisode: string;
+  sourceId: string;
+  contradicts: string | null;
+  learnedAt: string;
+}
+
+export interface ListEpisodesParams {
+  limit?: number;
+  offset?: number;
+  kind?: string;
+  sourceId?: string;
+  mode?: Mode;
+  includeSensitive?: boolean;
+}
+
+export interface ListFactsParams {
+  limit?: number;
+  offset?: number;
+  status?: FactStatus;
+  subjectId?: string;
   mode?: Mode;
   includeSensitive?: boolean;
 }
