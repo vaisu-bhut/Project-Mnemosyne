@@ -1,4 +1,5 @@
 import type { Connector, PullResult, RawItem } from "./connector.js";
+import { fetchWithRetry } from "../util/http.js";
 
 const GRAPH_CONTACTS = "https://graph.microsoft.com/v1.0/me/contacts";
 const SELECT =
@@ -86,7 +87,7 @@ export function createOutlookContactsConnector(opts: OutlookContactsConnectorOpt
       const qs = new URLSearchParams({ $select: SELECT, $top: String(Math.min(max, 100)) });
       let url: string | undefined = `${GRAPH_CONTACTS}?${qs.toString()}`;
       do {
-        const res = await doFetch(url, { headers: authHeader });
+        const res = await fetchWithRetry(url, { headers: authHeader }, { fetchImpl: doFetch });
         if (!res.ok) {
           // Surface hard failures (401 bad token, 403 missing Contacts.Read
           // consent) instead of silently ingesting nothing.

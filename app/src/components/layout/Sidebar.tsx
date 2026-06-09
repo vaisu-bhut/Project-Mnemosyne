@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 import {
   Brain,
   CalendarClock,
-  Database,
   LayoutDashboard,
   ListChecks,
+  Plug,
   ScrollText,
   Settings,
   Users,
@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/memory", label: "Memory", icon: ScrollText },
-  { href: "/sources", label: "Sources", icon: Database },
+  { href: "/sources", label: "Connections", icon: Plug },
   { href: "/people", label: "People", icon: Users },
   { href: "/briefings", label: "Briefings", icon: CalendarClock },
   { href: "/open-loops", label: "Open Loops", icon: ListChecks },

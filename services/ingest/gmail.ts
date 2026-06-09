@@ -6,6 +6,7 @@ import type {
   RawItem,
 } from "./connector.js";
 import { htmlToText, participantsFromHeaders, stripQuoted } from "./emailText.js";
+import { fetchWithRetry } from "../util/http.js";
 
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
 
@@ -92,7 +93,7 @@ export function createGmailConnector(opts: GmailConnectorOptions): Connector {
   async function api<T>(
     path: string,
   ): Promise<{ ok: boolean; status: number; body: T; error?: string }> {
-    const res = await doFetch(`${GMAIL_API}${path}`, { headers: authHeader });
+    const res = await fetchWithRetry(`${GMAIL_API}${path}`, { headers: authHeader }, { fetchImpl: doFetch });
     if (!res.ok) {
       const error = await res.text().catch(() => "");
       return { ok: false, status: res.status, body: undefined as T, error };

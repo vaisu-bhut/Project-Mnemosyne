@@ -125,6 +125,14 @@ const EnvSchema = z.object({
   // Look-ahead window for time-triggered pre-meeting briefings (hours).
   BRIEFING_LOOKAHEAD_HOURS: z.coerce.number().int().positive().default(24),
 
+  // --- Ingestion pacing (respect provider/embedding rate limits) ---
+  // Delay between items in a run so we don't burst the embedding/API quota.
+  INGEST_ITEM_DELAY_MS: z.coerce.number().int().min(0).default(250),
+  // Ingest jobs processed in parallel (1 = serialize; avoids API storms).
+  INGEST_CONCURRENCY: z.coerce.number().int().positive().default(1),
+  // Optional BullMQ limiter: max ingest jobs per minute (0 = disabled).
+  INGEST_MAX_PER_MIN: z.coerce.number().int().min(0).default(0),
+
   API_HOST: z.string().default("0.0.0.0"),
   API_PORT: z.coerce.number().int().positive().default(3000),
 });

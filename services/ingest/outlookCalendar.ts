@@ -1,4 +1,5 @@
 import type { Connector, Participant, PullResult, RawItem } from "./connector.js";
+import { fetchWithRetry } from "../util/http.js";
 
 const GRAPH_CALENDAR_VIEW = "https://graph.microsoft.com/v1.0/me/calendarView";
 
@@ -102,7 +103,7 @@ export function createOutlookCalendarConnector(opts: OutlookCalendarConnectorOpt
       const events: GraphEvent[] = [];
       let url: string | undefined = `${GRAPH_CALENDAR_VIEW}?${qs.toString()}`;
       do {
-        const res = await doFetch(url, { headers: authHeader });
+        const res = await fetchWithRetry(url, { headers: authHeader }, { fetchImpl: doFetch });
         if (!res.ok) {
           // Surface hard failures (401 bad token, 403 missing Calendars.Read
           // consent) instead of silently ingesting nothing.

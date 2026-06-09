@@ -13,6 +13,7 @@ import type { Embedder } from "../embeddings/index.js";
 import type { Extractor, EntityType } from "../extract/index.js";
 import { recordEntity, recordEpisode, recordFact } from "../memory/encode.js";
 import type { ArtifactStore } from "../storage/index.js";
+import { sleep } from "../util/http.js";
 import type { Connector, Participant } from "./connector.js";
 
 export interface IngestDeps {
@@ -41,6 +42,8 @@ export interface IngestProgress {
 export interface RunIngestOptions {
   /** Called after each episode is recorded; await is honored (DB write OK). */
   onProgress?: (p: IngestProgress) => void | Promise<void>;
+  /** Pause between items to stay under embedding/provider rate limits (ms). */
+  itemDelayMs?: number;
 }
 
 /** Sanitize an external id into an artifact key segment. */
@@ -179,6 +182,11 @@ export async function runIngest(
       total: items.length,
       lastItem: { title: item.title ?? null, kind: item.kind },
     });
+
+    // Pace the run so a burst of embeddings/API calls stays under rate limits.
+    if (opts.itemDelayMs && episodeIds.length < items.length) {
+      await sleep(opts.itemDelayMs);
+    }
   }
 
   // Persist the advanced cursor for the next incremental run.

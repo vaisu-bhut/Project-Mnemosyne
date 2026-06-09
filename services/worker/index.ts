@@ -99,6 +99,7 @@ const ingestWorker = new Worker<IngestJob>(
         source,
         connector,
         {
+          itemDelayMs: config.INGEST_ITEM_DELAY_MS,
           onProgress: async ({ ingested, total, lastItem }) => {
             sample.unshift(lastItem);
             if (sample.length > 8) sample.pop();
@@ -141,7 +142,15 @@ const ingestWorker = new Worker<IngestJob>(
     }
     return summary;
   },
-  { connection },
+  {
+    connection,
+    // Serialize ingest runs (no parallel API storms) + optional per-minute cap,
+    // so ingestion respects provider/embedding rate limits.
+    concurrency: config.INGEST_CONCURRENCY,
+    ...(config.INGEST_MAX_PER_MIN > 0
+      ? { limiter: { max: config.INGEST_MAX_PER_MIN, duration: 60_000 } }
+      : {}),
+  },
 );
 
 // --- extract: pull entities/facts/open-loops from one episode ---------------

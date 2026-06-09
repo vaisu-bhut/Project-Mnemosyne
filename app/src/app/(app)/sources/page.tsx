@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Database, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   ingestStatusKey,
   sourceKeys,
@@ -68,6 +69,7 @@ export default function SourcesPage() {
   const accounts = useAccounts();
   const ingest = useIngestSource();
 
+  const [tab, setTab] = useState<"accounts" | "sources">("accounts");
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Source | null>(null);
   // Sources with a live ingest run we're polling (drives the card's feed).
@@ -107,21 +109,39 @@ export default function SourcesPage() {
   return (
     <>
       <PageHeader
-        title="Sources"
-        description="Your connected accounts and the connectors (data streams) that feed memory."
+        title="Connections"
+        description="Connected accounts, and the connectors (data streams) that feed memory."
         action={
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus />
-            New connector
-          </Button>
+          tab === "sources" ? (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus />
+              New connector
+            </Button>
+          ) : undefined
         }
       />
 
-      <div className="mb-6">
-        <ConnectedAccountsCard />
+      <div className="mb-4 inline-flex rounded-md border bg-muted/40 p-1">
+        {(["accounts", "sources"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={cn(
+              "rounded px-4 py-1.5 text-sm font-medium capitalize transition-colors",
+              tab === t
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t}
+          </button>
+        ))}
       </div>
 
-      {sources.isLoading ? (
+      {tab === "accounts" ? (
+        <ConnectedAccountsCard />
+      ) : sources.isLoading ? (
         <FullPageSpinner />
       ) : sources.isError ? (
         <ErrorState
@@ -154,7 +174,7 @@ export default function SourcesPage() {
         <EmptyState
           icon={Database}
           title="No connectors yet"
-          description="Add a filesystem folder of notes (try examples/journal), or connect a Google/Microsoft account above then add its apps."
+          description="Add a filesystem folder of notes (try examples/journal), or connect a Google/Microsoft account on the Accounts tab then add its apps."
           action={
             <Button onClick={() => setCreateOpen(true)}>
               <Plus />

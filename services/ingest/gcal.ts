@@ -5,6 +5,7 @@ import type {
   PullResult,
   RawItem,
 } from "./connector.js";
+import { fetchWithRetry } from "../util/http.js";
 
 const CAL_API = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 
@@ -93,7 +94,7 @@ export function createCalendarConnector(opts: CalendarConnectorOptions): Connect
   async function api<T>(
     qs: URLSearchParams,
   ): Promise<{ ok: boolean; status: number; body: T; error?: string }> {
-    const res = await doFetch(`${CAL_API}?${qs.toString()}`, { headers: authHeader });
+    const res = await fetchWithRetry(`${CAL_API}?${qs.toString()}`, { headers: authHeader }, { fetchImpl: doFetch });
     if (!res.ok) {
       const error = await res.text().catch(() => "");
       return { ok: false, status: res.status, body: undefined as T, error };

@@ -1,5 +1,6 @@
 import type { Connector, Participant, PullResult, RawItem } from "./connector.js";
 import { htmlToText, stripQuoted } from "./emailText.js";
+import { fetchWithRetry } from "../util/http.js";
 
 const GRAPH_MESSAGES = "https://graph.microsoft.com/v1.0/me/messages";
 const SELECT =
@@ -107,7 +108,7 @@ export function createOutlookMailConnector(opts: OutlookMailConnectorOptions): C
       });
       let url: string | undefined = `${GRAPH_MESSAGES}?${qs.toString()}`;
       do {
-        const res = await doFetch(url, { headers: authHeader });
+        const res = await fetchWithRetry(url, { headers: authHeader }, { fetchImpl: doFetch });
         if (!res.ok) {
           // Surface hard failures (401 bad token, 403 missing Mail.Read consent)
           // instead of silently ingesting nothing.

@@ -1,4 +1,5 @@
 import type { Connector, PullResult, RawItem } from "./connector.js";
+import { fetchWithRetry } from "../util/http.js";
 
 const PEOPLE_API = "https://people.googleapis.com/v1/people/me/connections";
 const FIELDS = "names,emailAddresses,phoneNumbers,organizations,metadata";
@@ -84,7 +85,7 @@ export function createContactsConnector(opts: ContactsConnectorOptions): Connect
           pageSize: String(Math.min(max, 100)),
         });
         if (pageToken) qs.set("pageToken", pageToken);
-        const res = await doFetch(`${PEOPLE_API}?${qs.toString()}`, { headers: authHeader });
+        const res = await fetchWithRetry(`${PEOPLE_API}?${qs.toString()}`, { headers: authHeader }, { fetchImpl: doFetch });
         if (!res.ok) {
           // Surface hard failures (e.g. 403 People API disabled, 401 bad token)
           // instead of silently ingesting nothing.

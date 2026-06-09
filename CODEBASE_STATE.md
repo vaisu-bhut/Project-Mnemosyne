@@ -76,12 +76,14 @@ Project-Mnemosyne/
     api/                       # index.ts (entry), server.ts (Fastify routes)
     worker/index.ts            # BullMQ workers + schedulers
     examples/journal/          # sample notes for filesystem connector
-    test/                      # Vitest integration tests (28 files)
+    util/http.ts               # fetchWithRetry (429/503 backoff) + sleep
+    test/                      # Vitest integration tests (29 files)
   app/                 # frontend package (Next.js App Router)
     src/app/(auth)/{login,register}        # auth pages
     src/app/auth/{google,microsoft}/callback  # OAuth web hand-off
     src/app/(app)/{,memory,sources,people,people/[id],open-loops,briefings,settings}
-                     #   nav: Dashboard, Memory, Sources, People, Briefings, Open Loops, Settings
+                     #   nav: Dashboard, Memory, Connections(/sources), People, Briefings, Open Loops, Settings
+                     #   /sources page = Accounts | Sources sub-tabs
                      #   /memory = Episodes|Facts sub-tabs; no separate Search/Episodes/Facts routes
                      #   layout: fixed-left Sidebar, only <main> scrolls (h-svh + md:pl-60)
     src/components/  ui/ + feature dirs (auth, agents, people, sources, episodes, memory, openloops, chat)
@@ -112,9 +114,14 @@ Project-Mnemosyne/
 - `services/worker/index.ts` — 5 BullMQ workers: ingest → (enqueues) extract,
   consolidate, nudge, healthcheck. The ingest worker updates the job's
   `ingest_runs` row (running → progress sample → done/error) via `runIngest`'s
-  `onProgress` callback, powering the live feed. Consolidation runs on
-  `CONSOLIDATE_INTERVAL_MS`, Nudger on `NUDGER_INTERVAL_MS` (0 disables). Graceful
-  shutdown on signals.
+  `onProgress` callback, powering the live feed. **Ingestion is rate-limit-paced**:
+  the ingest worker runs with `concurrency: INGEST_CONCURRENCY` (+ optional
+  per-minute `limiter` via `INGEST_MAX_PER_MIN`), `runIngest` sleeps
+  `INGEST_ITEM_DELAY_MS` between items, and connectors retry 429/503 with backoff
+  (`util/http.ts` `fetchWithRetry`). Consolidation runs on `CONSOLIDATE_INTERVAL_MS`,
+  Nudger on `NUDGER_INTERVAL_MS` (0 disables). Graceful shutdown on signals.
+- `services/util/http.ts` — `fetchWithRetry` (429/503 backoff honoring Retry-After)
+  + `sleep`; used by all connectors (and the embedder backs off similarly).
 - `services/db/schema.ts` — tables: users, oauth_accounts, sessions, sources,
   entities, episodes (monthly-partitioned by occurred_at; PK (id, occurred_at),
   dedup key (source_id, external_id, occurred_at); default partition),
