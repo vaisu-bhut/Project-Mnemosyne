@@ -165,6 +165,12 @@ export const agentsApi = {
 export const peopleApi = {
   health: () => request<RelationshipHealth[]>("/people/health"),
   brief: (id: string) => request<Briefing>(`/people/${id}/brief`),
+  // Merge two people the system wrongly split: fold dupe into survivor.
+  merge: (survivorId: string, dupeId: string) =>
+    request<{ survivorId: string; mergedId: string }>("/entities/merge", {
+      method: "POST",
+      body: { survivorId, dupeId },
+    }),
 };
 
 export const briefingsApi = {

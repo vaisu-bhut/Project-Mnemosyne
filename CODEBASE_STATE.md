@@ -90,7 +90,11 @@ Project-Mnemosyne/
                      #   /memory = Episodes|Facts sub-tabs; no separate Search/Episodes/Facts routes
                      #   layout: fixed-left Sidebar, only <main> scrolls (h-svh + md:pl-60)
     src/components/  ui/ + feature dirs (auth, agents, people, sources, episodes, memory, openloops, chat)
-                     #   memory/EpisodesTab + FactsTab (FactsTab: inline edit/stale/delete per fact)
+                     #   /memory tabs: Episodes | Facts | Conflicts
+                     #   memory/EpisodesTab + FactsTab (inline edit/stale/delete per fact +
+                     #     decay/freshness indicator) + ContradictionsTab (resolve a pair → mark
+                     #     one side stale, useResolveContradiction)
+                     #   people/MergePeopleDialog — merge two wrongly-split people (useMergePeople)
                      #   sources/PermissionsEditor — static "Read-only by design" principle panel
                      #     (write/delete toggles removed; sources always sent DEFAULT_PERMISSIONS)
                      #   chat/ChatPanel + AskLauncher — right slide-over "ask your brain"
@@ -116,7 +120,10 @@ Project-Mnemosyne/
   `/accounts` (GET connected accounts with computed `services[]`/`needsReauth`,
   never tokens; DELETE :id disconnect), `/episodes` + `/facts` (paginated,
   Guardian-filtered browse lists), `PATCH`/`DELETE /facts/:id` (edit/retract or delete a
-  derived fact — episodes are never touched), `/search`, `/ask` (accepts `scope`
+  derived fact — episodes are never touched; GET `/facts` also returns a computed
+  `decay` 0..1 + `protectedFromDecay` + `decaysInDays` so forgetting is visible),
+  `/entities/merge` (POST {survivorId, dupeId} — user-owned-only entity merge via
+  consolidate `mergeEntities`), `/search`, `/ask` (accepts `scope`
   {entityId/sourceId/kind} + `history` for the page-context chat; hard evidence
   guard — refuses with a fixed answer when nothing retrieved is within the
   relevance threshold, no generator call), `GET /episodes/:id/trace` (extraction

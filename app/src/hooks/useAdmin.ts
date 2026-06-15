@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { adminApi } from "@/lib/api/endpoints";
+import { adminApi, factsApi } from "@/lib/api/endpoints";
+import type { FactStatus } from "@/lib/api/types";
 
 export function useHealth() {
   return useQuery({
@@ -13,6 +14,19 @@ export function useContradictions() {
   return useQuery({
     queryKey: ["contradictions"],
     queryFn: adminApi.contradictions,
+  });
+}
+
+/** Resolve a contradiction by setting one side's status (stale/retracted). */
+export function useResolveContradiction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: FactStatus }) =>
+      factsApi.update(id, { status }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["contradictions"] });
+      void qc.invalidateQueries({ queryKey: ["facts"] });
+    },
   });
 }
 

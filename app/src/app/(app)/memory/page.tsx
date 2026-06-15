@@ -5,9 +5,15 @@ import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EpisodesTab } from "@/components/memory/EpisodesTab";
 import { FactsTab } from "@/components/memory/FactsTab";
+import { ContradictionsTab } from "@/components/memory/ContradictionsTab";
 import { useRegisterChatContext } from "@/lib/chat/ChatPanelProvider";
 
-type Tab = "episodes" | "facts";
+type Tab = "episodes" | "facts" | "conflicts";
+const TABS: { value: Tab; label: string }[] = [
+  { value: "episodes", label: "Episodes" },
+  { value: "facts", label: "Facts" },
+  { value: "conflicts", label: "Conflicts" },
+];
 
 const CHAT_CONTEXT = {
   title: "Ask your memory",
@@ -30,24 +36,30 @@ export default function MemoryPage() {
       />
 
       <div className="mb-4 inline-flex rounded-md border bg-muted/40 p-1">
-        {(["episodes", "facts"] as const).map((t) => (
+        {TABS.map((t) => (
           <button
-            key={t}
+            key={t.value}
             type="button"
-            onClick={() => setTab(t)}
+            onClick={() => setTab(t.value)}
             className={cn(
-              "rounded px-4 py-1.5 text-sm font-medium capitalize transition-colors",
-              tab === t
+              "rounded px-4 py-1.5 text-sm font-medium transition-colors",
+              tab === t.value
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            {t}
+            {t.label}
           </button>
         ))}
       </div>
 
-      {tab === "episodes" ? <EpisodesTab /> : <FactsTab />}
+      {tab === "episodes" ? (
+        <EpisodesTab />
+      ) : tab === "facts" ? (
+        <FactsTab />
+      ) : (
+        <ContradictionsTab />
+      )}
     </>
   );
 }

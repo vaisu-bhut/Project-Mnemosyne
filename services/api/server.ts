@@ -46,6 +46,7 @@ import { ask, searchMemory } from "../memory/retrieve.js";
 import {
   forgetEpisode,
   listContradictions,
+  mergeEntities,
   runConsolidation,
   setRetention,
   summarizeEntity,
@@ -161,6 +162,11 @@ const AskBody = z.object({
   ...ModeField,
 });
 const ConductBody = z.object({ query: z.string().min(1), ...ModeField });
+const MergeEntitiesBody = z.object({
+  // The entity to keep; `dupeId` is folded into it and removed.
+  survivorId: z.string().uuid(),
+  dupeId: z.string().uuid(),
+});
 const SnoozeBody = z.object({
   // How long to suppress the nudge. Default one day; capped at ~30 days.
   hours: z.number().positive().max(720).optional().default(24),
@@ -419,20 +425,38 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       subjectId: q.subjectId,
       excludeSourceIds: deniedSourceIds,
     });
-    return rows.map((f) => ({
-      id: f.id,
-      statement: f.statement,
-      predicate: f.predicate,
-      subjectId: f.subject_id,
-      objectId: f.object_id,
-      status: f.status,
-      reinforced: f.reinforced,
-      confidence: f.confidence,
-      sourceEpisode: f.source_episode,
-      sourceId: f.source_id,
-      contradicts: f.contradicts,
-      learnedAt: f.learned_at.toISOString(),
-    }));
+    const maxAgeDays = consolidateOptions.decayMaxAgeDays ?? 90;
+    const MIN_REINFORCED = 2; // mirrors decayFacts: reinforced facts are protected
+    const DAY_MS = 86_400_000;
+    const nowMs = Date.now();
+    return rows.map((f) => {
+      // A fact is protected from decay once it's been reconfirmed or reinforced
+      // enough (see consolidate/decay.ts). Otherwise it ages toward 'stale'.
+      const protectedFromDecay = f.last_confirmed != null || f.reinforced >= MIN_REINFORCED;
+      const since = (f.last_confirmed ?? f.learned_at).getTime();
+      const ageDays = Math.max(0, (nowMs - since) / DAY_MS);
+      const decay = protectedFromDecay ? 0 : Math.min(1, ageDays / maxAgeDays);
+      const decaysInDays = protectedFromDecay ? null : Math.max(0, Math.ceil(maxAgeDays - ageDays));
+      return {
+        id: f.id,
+        statement: f.statement,
+        predicate: f.predicate,
+        subjectId: f.subject_id,
+        objectId: f.object_id,
+        status: f.status,
+        reinforced: f.reinforced,
+        confidence: f.confidence,
+        sourceEpisode: f.source_episode,
+        sourceId: f.source_id,
+        contradicts: f.contradicts,
+        learnedAt: f.learned_at.toISOString(),
+        lastConfirmedAt: f.last_confirmed ? f.last_confirmed.toISOString() : null,
+        // 0 = fresh/protected, 1 = at the decay threshold.
+        decay: Number(decay.toFixed(2)),
+        protectedFromDecay,
+        decaysInDays,
+      };
+    });
   });
 
   // Edit a derived fact (statement/status). Memory/episodes are never touched.
@@ -533,6 +557,29 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   // Facts flagged as contradicting another.
   app.get("/contradictions", async (req) => listContradictions(db, req.user!.id));
+
+  // Merge two of the caller's entities ("these are the same person"). Folds
+  // dupe into survivor (aliases, attrs, facts, edges). Owner-scoped: both must
+  // belong to the caller, or it 404s — mergeEntities itself isn't user-scoped.
+  app.post("/entities/merge", async (req, reply) => {
+    const { survivorId, dupeId } = MergeEntitiesBody.parse(req.body);
+    if (survivorId === dupeId) {
+      reply.code(400);
+      return { error: "survivorId and dupeId must differ" };
+    }
+    const owned = await db
+      .selectFrom("entities")
+      .select("id")
+      .where("user_id", "=", req.user!.id)
+      .where("id", "in", [survivorId, dupeId])
+      .execute();
+    if (owned.length !== 2) {
+      reply.code(404);
+      return { error: "entity not found" };
+    }
+    await mergeEntities(db, survivorId, dupeId);
+    return { survivorId, mergedId: dupeId };
+  });
 
   // Build/refresh an entity's summary node.
   app.post<{ Params: { id: string } }>("/entities/:id/summarize", async (req) => {

@@ -74,6 +74,43 @@ export function FactsTab() {
   );
 }
 
+/** Makes "it forgets" visible: a small freshness/decay readout on a fact.
+ * Protected (reinforced/reconfirmed) facts persist; others age toward stale. */
+function DecayIndicator({ fact }: { fact: Fact }) {
+  if (fact.protectedFromDecay) {
+    return (
+      <span
+        className="text-xs text-emerald-600 dark:text-emerald-400"
+        title="Reinforced or reconfirmed — protected from decay"
+      >
+        ● persists
+      </span>
+    );
+  }
+  // Unprotected: show how close it is to decaying, with a tiny bar.
+  const pct = Math.round(fact.decay * 100);
+  const tone =
+    fact.decay >= 0.85
+      ? "text-destructive"
+      : fact.decay >= 0.5
+        ? "text-amber-600 dark:text-amber-400"
+        : "text-muted-foreground";
+  const label =
+    fact.decaysInDays == null
+      ? "decaying"
+      : fact.decaysInDays <= 0
+        ? "decays soon"
+        : `fades in ${fact.decaysInDays}d`;
+  return (
+    <span className={`flex items-center gap-1 text-xs ${tone}`} title={`Decay ${pct}%`}>
+      <span className="inline-block h-1.5 w-10 overflow-hidden rounded-full bg-muted">
+        <span className="block h-full rounded-full bg-current" style={{ width: `${pct}%` }} />
+      </span>
+      {label}
+    </span>
+  );
+}
+
 function FactItem({ fact }: { fact: Fact }) {
   const update = useUpdateFact();
   const remove = useDeleteFact();
@@ -144,6 +181,7 @@ function FactItem({ fact }: { fact: Fact }) {
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge variant={STATUS_VARIANT[fact.status]}>{fact.status}</Badge>
         {fact.reinforced > 0 && <Badge variant="outline">reinforced ×{fact.reinforced}</Badge>}
+        {fact.status === "active" && <DecayIndicator fact={fact} />}
         <Citation episodeId={fact.sourceEpisode} />
 
         <div className="ml-auto flex items-center gap-1">

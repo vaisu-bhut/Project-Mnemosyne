@@ -243,6 +243,13 @@ export interface Fact {
   sourceId: string;
   contradicts: string | null;
   learnedAt: string;
+  lastConfirmedAt: string | null;
+  /** 0 = fresh/protected, 1 = at the decay threshold. */
+  decay: number;
+  /** Reinforced/reconfirmed enough that it won't auto-decay. */
+  protectedFromDecay: boolean;
+  /** Days until this fact would decay to stale, or null if protected. */
+  decaysInDays: number | null;
 }
 
 export interface ListEpisodesParams {
