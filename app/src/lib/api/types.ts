@@ -206,6 +206,30 @@ export interface Episode {
 
 export type FactStatus = "active" | "stale" | "retracted";
 
+/** A fact in an episode's extraction trace: the derived claim plus its trust /
+ * reinforcement history (GET /episodes/:id/trace). */
+export interface TraceFact {
+  id: string;
+  statement: string;
+  predicate: string | null;
+  subjectId: string;
+  objectId: string | null;
+  status: FactStatus;
+  confidence: number;
+  reinforced: number;
+  contradicts: string | null;
+  learnedAt: string;
+  lastReinforcedAt: string;
+  daysSinceReinforced: number;
+}
+
+/** The source episode + the facts derived from it. Powers the Ask citation →
+ * source → extraction-trace panel. */
+export interface EpisodeTrace {
+  episode: Episode;
+  facts: TraceFact[];
+}
+
 export interface Fact {
   id: string;
   statement: string;

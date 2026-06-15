@@ -81,6 +81,23 @@ export async function listFacts(
     .execute();
 }
 
+/** Facts derived from a specific episode (its extraction trace), owner-scoped,
+ * most-reinforced first. The provenance link is `source_episode`. */
+export async function listFactsBySourceEpisode(
+  db: Db,
+  userId: string,
+  episodeId: string,
+): Promise<Fact[]> {
+  return db
+    .selectFrom("facts")
+    .selectAll()
+    .where("user_id", "=", userId)
+    .where("source_episode", "=", episodeId)
+    .orderBy("reinforced", "desc")
+    .orderBy("learned_at", "desc")
+    .execute();
+}
+
 export interface UpdateFactInput {
   statement?: string;
   status?: FactStatus;

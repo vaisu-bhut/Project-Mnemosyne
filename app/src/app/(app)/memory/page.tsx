@@ -5,12 +5,22 @@ import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/common/PageHeader";
 import { EpisodesTab } from "@/components/memory/EpisodesTab";
 import { FactsTab } from "@/components/memory/FactsTab";
-import { AskLauncher } from "@/components/chat/AskLauncher";
+import { useRegisterChatContext } from "@/lib/chat/ChatPanelProvider";
 
 type Tab = "episodes" | "facts";
 
+const CHAT_CONTEXT = {
+  title: "Ask your memory",
+  suggestions: [
+    "What happened recently?",
+    "What do you know about me?",
+    "What are my commitments?",
+  ],
+};
+
 export default function MemoryPage() {
   const [tab, setTab] = useState<Tab>("episodes");
+  useRegisterChatContext(CHAT_CONTEXT);
 
   return (
     <>
@@ -38,15 +48,6 @@ export default function MemoryPage() {
       </div>
 
       {tab === "episodes" ? <EpisodesTab /> : <FactsTab />}
-
-      <AskLauncher
-        title="Ask your memory"
-        suggestions={[
-          "What happened recently?",
-          "What do you know about me?",
-          "What are my commitments?",
-        ]}
-      />
     </>
   );
 }

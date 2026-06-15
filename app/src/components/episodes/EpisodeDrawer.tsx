@@ -3,11 +3,13 @@
 import { useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { toast } from "sonner";
-import { Archive, FileText, Trash2, X } from "lucide-react";
-import type { EpisodeHit, RetentionTier } from "@/lib/api/types";
-import { useForgetEpisode, useSetRetention } from "@/hooks/useRetrieve";
+import { Archive, FileText, GitBranch, Trash2, X } from "lucide-react";
+import type { EpisodeHit, RetentionTier, TraceFact } from "@/lib/api/types";
+import { useEpisodeTrace, useForgetEpisode, useSetRetention } from "@/hooks/useRetrieve";
+import { useMode } from "@/lib/mode/ModeProvider";
 import { ApiError } from "@/lib/api/client";
 import { formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/common/Spinner";
 
@@ -33,8 +35,10 @@ export function EpisodeDrawer({
   onOpenChange: (open: boolean) => void;
   onForgotten?: (episodeId: string) => void;
 }) {
+  const { mode, includeSensitive } = useMode();
   const forget = useForgetEpisode();
   const retention = useSetRetention();
+  const trace = useEpisodeTrace(open ? episodeId : null, { mode, includeSensitive });
   const [confirmForget, setConfirmForget] = useState(false);
   const [tier, setTier] = useState<RetentionTier>("standard");
 
@@ -88,8 +92,10 @@ export function EpisodeDrawer({
             {hit?.occurredAt && (
               <p className="text-xs text-muted-foreground">{formatDate(hit.occurredAt)}</p>
             )}
-            {hit?.snippet ? (
-              <p className="rounded-md bg-muted p-3 text-sm leading-relaxed">{hit.snippet}</p>
+            {hit?.snippet ?? trace.data?.episode.snippet ? (
+              <p className="rounded-md bg-muted p-3 text-sm leading-relaxed">
+                {hit?.snippet ?? trace.data?.episode.snippet}
+              </p>
             ) : (
               <p className="text-sm text-muted-foreground">
                 No preview available — open Search to retrieve this episode&apos;s text.
@@ -105,6 +111,32 @@ export function EpisodeDrawer({
                 </>
               )}
             </dl>
+          </div>
+
+          <div className="space-y-2 border-t pt-4">
+            <p className="flex items-center gap-2 text-sm font-medium">
+              <GitBranch className="size-4" /> Extraction trace
+            </p>
+            <p className="text-xs text-muted-foreground">
+              What this episode taught your memory — and how well-reinforced each claim is.
+            </p>
+            {trace.isPending ? (
+              <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                <Spinner className="size-3" /> Tracing…
+              </div>
+            ) : trace.isError ? (
+              <p className="text-sm text-muted-foreground">Couldn&apos;t load the trace.</p>
+            ) : trace.data && trace.data.facts.length > 0 ? (
+              <ul className="space-y-2">
+                {trace.data.facts.map((f) => (
+                  <TraceFactRow key={f.id} fact={f} />
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No facts were derived from this episode.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2 border-t pt-4">
@@ -167,5 +199,45 @@ export function EpisodeDrawer({
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
+  );
+}
+
+const STATUS_STYLES: Record<TraceFact["status"], string> = {
+  active: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  stale: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  retracted: "bg-destructive/10 text-destructive line-through",
+};
+
+function reinforcedLabel(days: number): string {
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  return `${days} days ago`;
+}
+
+/** One derived fact: the claim, its trust status, and reinforcement history —
+ * the "from this, I derived this, last reinforced N days ago" line. */
+function TraceFactRow({ fact }: { fact: TraceFact }) {
+  return (
+    <li className="rounded-md border bg-card p-3 text-sm">
+      <div className="flex items-start justify-between gap-2">
+        <p className={cn("leading-snug", fact.status === "retracted" && "text-muted-foreground")}>
+          {fact.statement}
+        </p>
+        <span
+          className={cn(
+            "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+            STATUS_STYLES[fact.status],
+          )}
+        >
+          {fact.status}
+        </span>
+      </div>
+      <p className="mt-1.5 text-xs text-muted-foreground">
+        Reinforced {fact.reinforced}×{" · "}
+        last reinforced {reinforcedLabel(fact.daysSinceReinforced)}
+        {" · "}
+        {Math.round(fact.confidence * 100)}% confidence
+      </p>
+    </li>
   );
 }

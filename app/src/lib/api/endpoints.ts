@@ -13,6 +13,7 @@ import type {
   Contradiction,
   CreateSourceInput,
   Episode,
+  EpisodeTrace,
   Fact,
   HealthStatus,
   IngestRun,
@@ -107,6 +108,11 @@ export const episodesApi = {
         mode: params.mode,
         includeSensitive: params.includeSensitive,
       },
+    }),
+  // The extraction trace: source episode + the facts derived from it.
+  trace: (id: string, opts: { mode?: Mode; includeSensitive?: boolean } = {}) =>
+    request<EpisodeTrace>(`/episodes/${id}/trace`, {
+      query: { mode: opts.mode, includeSensitive: opts.includeSensitive },
     }),
 };
 export const factsApi = {

@@ -22,6 +22,7 @@ export {
 export { upsertEntity, type Entity, type UpsertEntityInput } from "./repositories/entities.js";
 export {
   insertEpisode,
+  getEpisode,
   listEpisodes,
   type Episode,
   type InsertEpisodeInput,
@@ -30,6 +31,7 @@ export {
 export {
   insertFact,
   listFacts,
+  listFactsBySourceEpisode,
   reinforceFact,
   updateFact,
   deleteFact,

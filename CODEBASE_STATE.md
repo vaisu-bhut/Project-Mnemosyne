@@ -66,7 +66,8 @@ Project-Mnemosyne/
                                #   gmail.ts, gcal.ts, gcontacts.ts (Google),
                                #   outlookMail.ts, outlookCalendar.ts, outlookContacts.ts (MS Graph)
     memory/                    # encode.ts (write); retrieve.ts (read, guardian-gated;
-                               #   ask()/searchMemory take optional scope+history for chat)
+                               #   ask()/searchMemory take optional scope+history for chat;
+                               #   ask() enforces a hard evidence guard → NO_EVIDENCE_ANSWER)
     consolidate/               # index.ts + entities(alias), dedup, contradictions,
                                #   decay, retention, summarize, util ("sleep" layer)
     semantic/                  # entityMatch, nli, intent, index (optional LLM upgrades)
@@ -90,7 +91,10 @@ Project-Mnemosyne/
                      #   memory/EpisodesTab + FactsTab (FactsTab: inline edit/stale/delete per fact)
                      #   sources/PermissionsEditor — per-app read/write/delete + mode (write/delete inert)
                      #   chat/ChatPanel + AskLauncher — right slide-over "ask your brain"
-                     #     (floating launcher on Memory/People/Dashboard; scoped retrieval via /ask)
+                     #     (launcher is app-wide: rendered once in ChatPanelProvider; pages call
+                     #      useRegisterChatContext() to scope it; scoped retrieval via /ask)
+                     #   episodes/EpisodeDrawer — citation chip → source episode + extraction
+                     #     trace (facts derived + reinforcement history) via useEpisodeTrace
     src/hooks/       react-query hooks (useSources, usePeople, useBrowse[episodes/facts/update/delete], ...)
     src/lib/         api/(client,endpoints,types,casing), auth/, mode/, chat/ChatPanelProvider, citations, format, utils
 ```
@@ -106,7 +110,11 @@ Project-Mnemosyne/
   never tokens; DELETE :id disconnect), `/episodes` + `/facts` (paginated,
   Guardian-filtered browse lists), `PATCH`/`DELETE /facts/:id` (edit/retract or delete a
   derived fact — episodes are never touched), `/search`, `/ask` (accepts `scope`
-  {entityId/sourceId/kind} + `history` for the page-context chat), `/consolidate`,
+  {entityId/sourceId/kind} + `history` for the page-context chat; hard evidence
+  guard — refuses with a fixed answer when nothing retrieved is within the
+  relevance threshold, no generator call), `GET /episodes/:id/trace` (extraction
+  trace: source episode + facts derived from it with reinforcement/decay history,
+  Guardian-gated), `/consolidate`,
   `/retention`, `/contradictions`, `/entities/:id/summarize`,
   `/episodes/:id/forget`, `/open-loops`, `/conduct`, `/agents/nudger/run`,
   `/mind`, `/people/health`, `/people/:id/brief`, `/briefings/upcoming`,

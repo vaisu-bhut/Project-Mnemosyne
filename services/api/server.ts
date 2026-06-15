@@ -13,10 +13,12 @@ import {
   deleteOauthAccount,
   dismissBlackboard,
   getLatestIngestRun,
+  getEpisode,
   getOauthAccountById,
   getSource,
   listEpisodes,
   listFacts,
+  listFactsBySourceEpisode,
   listMind,
   listOauthAccounts,
   listOpenLoops,
@@ -458,6 +460,58 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     const cdeps = semantic ? { db, store, generator } : { db, store };
     return runConsolidation(cdeps, req.user!.id, consolidateOptions);
   });
+
+  // Extraction trace for one episode: the source, then the facts derived from
+  // it with their trust/reinforcement history. Powers the Ask citation → source
+  // → "from this, I derived this, last reinforced N days ago" panel.
+  app.get<{ Params: { id: string }; Querystring: { mode?: Mode; includeSensitive?: boolean } }>(
+    "/episodes/:id/trace",
+    async (req, reply) => {
+      const episode = await getEpisode(db, req.user!.id, req.params.id);
+      if (!episode) {
+        reply.code(404);
+        return { error: "episode not found" };
+      }
+      // Honor Guardian: if this episode's source is hidden in the active mode, withhold it.
+      const { deniedSourceIds } = await resolveVisibility(db, req.user!.id, accessContext(req.query));
+      if (deniedSourceIds.includes(episode.source_id)) {
+        reply.code(404);
+        return { error: "episode not found" };
+      }
+
+      const facts = await listFactsBySourceEpisode(db, req.user!.id, req.params.id);
+      const now = Date.now();
+      const DAY_MS = 86_400_000;
+      return {
+        episode: {
+          id: episode.id,
+          occurredAt: episode.occurred_at.toISOString(),
+          kind: episode.kind,
+          title: episode.title,
+          sourceId: episode.source_id,
+          snippet: bodySnippet(episode.body, episode.meta, encKey, 600),
+          artifactUri: episode.artifact_uri,
+        },
+        facts: facts.map((f) => {
+          const lastReinforced = f.last_confirmed ?? f.learned_at;
+          return {
+            id: f.id,
+            statement: f.statement,
+            predicate: f.predicate,
+            subjectId: f.subject_id,
+            objectId: f.object_id,
+            status: f.status,
+            confidence: f.confidence,
+            reinforced: f.reinforced,
+            contradicts: f.contradicts,
+            learnedAt: f.learned_at.toISOString(),
+            lastReinforcedAt: lastReinforced.toISOString(),
+            daysSinceReinforced: Math.floor((now - lastReinforced.getTime()) / DAY_MS),
+          };
+        }),
+      };
+    },
+  );
 
   // Forget an episode across all stores (irreversible).
   app.post<{ Params: { id: string } }>("/episodes/:id/forget", async (req) => {

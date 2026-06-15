@@ -158,7 +158,21 @@ export interface AskOptions {
   scope?: RetrieveScope;
   /** Prior turns for multi-turn coherence (LLM prompt only, not retrieval). */
   history?: ChatTurn[];
+  /**
+   * Max cosine distance for a hit to count as evidence. If nothing retrieved
+   * lands within this, we refuse *without* calling the generator rather than
+   * trusting it to admit ignorance. Cosine distance ∈ [0,2]; lower = closer.
+   */
+  evidenceMaxDistance?: number;
 }
+
+/** The fixed answer when memory holds no evidence for a question. The product
+ * "defers to evidence": no source → it says so, deterministically. */
+export const NO_EVIDENCE_ANSWER = "I don't have anything about that in your memory.";
+
+/** Default relevance gate. Permissive enough not to misfire on loosely-related
+ * matches, strict enough to catch "nothing relevant came back." */
+const DEFAULT_EVIDENCE_MAX_DISTANCE = 0.85;
 
 export async function ask(
   deps: AskDeps,
@@ -186,6 +200,17 @@ export async function ask(
       citations,
       used,
     };
+  }
+
+  // Hard evidence guard: with a real generator, if nothing retrieved is close
+  // enough to be evidence, refuse deterministically instead of prompting the
+  // model to (hopefully) admit it doesn't know. The dev path keeps its own
+  // no-hallucination behavior above and is intentionally not gated here.
+  const maxDistance = options.evidenceMaxDistance ?? DEFAULT_EVIDENCE_MAX_DISTANCE;
+  const distances = [...facts, ...episodes].map((h) => h.distance);
+  const hasEvidence = distances.some((d) => d <= maxDistance);
+  if (!hasEvidence) {
+    return { answer: NO_EVIDENCE_ANSWER, citations: [], used: { facts: [], episodes: [] } };
   }
 
   const context = [

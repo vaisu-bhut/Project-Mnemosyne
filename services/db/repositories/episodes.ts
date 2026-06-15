@@ -64,6 +64,21 @@ export async function insertEpisode(
     .executeTakeFirstOrThrow();
 }
 
+/** Fetch a single episode by id, owner-scoped. Scans partitions (id is unique
+ * across them). Returns undefined if it doesn't exist or isn't the caller's. */
+export async function getEpisode(
+  db: Db,
+  userId: string,
+  id: string,
+): Promise<Episode | undefined> {
+  return db
+    .selectFrom("episodes")
+    .selectAll()
+    .where("id", "=", id)
+    .where("user_id", "=", userId)
+    .executeTakeFirst();
+}
+
 export interface ListEpisodesOptions {
   limit?: number;
   offset?: number;
