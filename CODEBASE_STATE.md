@@ -80,6 +80,8 @@ Project-Mnemosyne/
     util/http.ts               # fetchWithRetry (429/503 backoff) + sleep
     test/                      # Vitest integration tests (29 files)
   app/                 # frontend package (Next.js App Router)
+    public/          # PWA assets: manifest.webmanifest, icon.svg, sw.js
+                     #   (service worker: install/activate + notificationclick + push-ready stub)
     src/app/(auth)/{login,register}        # auth pages
     src/app/auth/{google,microsoft}/callback  # OAuth web hand-off
     src/app/(app)/{,memory,sources,people,people/[id],open-loops,briefings,settings}
@@ -95,6 +97,10 @@ Project-Mnemosyne/
                      #      useRegisterChatContext() to scope it; scoped retrieval via /ask)
                      #   episodes/EpisodeDrawer — citation chip → source episode + extraction
                      #     trace (facts derived + reinforcement history) via useEpisodeTrace
+                     #   pwa/ServiceWorkerRegistrar (registers /sw.js, in Providers) +
+                     #     pwa/ProactiveNotifier (in (app) shell: polls /mind + /briefings/
+                     #     upcoming every 60s, fires browser notifications for new salient
+                     #     nudges + briefings ~15 min pre-meeting; dedup persisted, lib/notify)
     src/hooks/       react-query hooks (useSources, usePeople, useBrowse[episodes/facts/update/delete], ...)
     src/lib/         api/(client,endpoints,types,casing), auth/, mode/, chat/ChatPanelProvider, citations, format, utils
 ```
@@ -127,7 +133,10 @@ Project-Mnemosyne/
   per-minute `limiter` via `INGEST_MAX_PER_MIN`), `runIngest` sleeps
   `INGEST_ITEM_DELAY_MS` between items, and connectors retry 429/503 with backoff
   (`util/http.ts` `fetchWithRetry`). Consolidation runs on `CONSOLIDATE_INTERVAL_MS`,
-  Nudger on `NUDGER_INTERVAL_MS` (0 disables). Graceful shutdown on signals.
+  Nudger on `NUDGER_INTERVAL_MS` (0 disables; default now 300000 = every 5 min).
+  The nudge job runs both `runNudger` and `upcomingBriefings({post:true})`, so
+  nudges + pre-meeting briefings are posted to the blackboard on a schedule.
+  Graceful shutdown on signals.
 - `services/util/http.ts` — `fetchWithRetry` (429/503 backoff honoring Retry-After)
   + `sleep`; used by all connectors (and the embedder backs off similarly).
 - `services/db/schema.ts` — tables: users, oauth_accounts, sessions, sources,

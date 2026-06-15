@@ -8,6 +8,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { FullPageSpinner } from "@/components/common/Spinner";
 import { EpisodeDrawerProvider } from "@/components/episodes/EpisodeDrawerProvider";
 import { ChatPanelProvider } from "@/lib/chat/ChatPanelProvider";
+import { ProactiveNotifier } from "@/components/pwa/ProactiveNotifier";
 
 /** Auth gate + app shell. Unauthenticated users are bounced to /login. */
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -23,6 +24,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <EpisodeDrawerProvider>
       <ChatPanelProvider>
+        <ProactiveNotifier />
         {/* Shell is exactly viewport-height: the sidebar is fixed-left and the
             right column's <main> is the only scrolling region. */}
         <div className="h-svh">
