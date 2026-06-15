@@ -96,6 +96,8 @@ Project-Mnemosyne/
     src/components/  ui/ + feature dirs (auth, agents, people, sources, episodes, memory, openloops, chat, capture, pwa)
                      #   capture/VoiceCaptureDialog — record → transcribe → review → commit
                      #     (MediaRecorder; "Capture" button in Topbar; useCapture hooks)
+                     #   capture/MicButton — push-to-talk record→transcribe→onTranscript;
+                     #     used in chat/ChatPanel for voice-driven Ask (lib/audio shared helpers)
                      #   /memory tabs: Episodes | Facts | Conflicts
                      #   memory/EpisodesTab + FactsTab (inline edit/stale/delete per fact +
                      #     decay/freshness indicator) + ContradictionsTab (resolve a pair → mark
@@ -142,7 +144,8 @@ Project-Mnemosyne/
   `/retention`, `/contradictions`, `/entities/:id/summarize`,
   `/episodes/:id/forget`, `/open-loops`, `/conduct`, `/agents/nudger/run`,
   `/capture/transcribe` (store audio + transcribe + extraction preview) +
-  `/capture/commit` (create voice_note episode + extract into the graph),
+  `/capture/commit` (create voice_note episode + extract into the graph) +
+  `/transcribe` (transcribe-only for voice-driven Ask; no storage/extraction),
   `/mind`, `/people/health` (incl. cadence trend), `/people/:id/brief`,
   `/graph` (people network: nodes {closeness, circle, interactions} + weighted
   co_occurs links, capped to most-connected N),

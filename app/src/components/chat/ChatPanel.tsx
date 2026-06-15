@@ -11,6 +11,7 @@ import type { Answer, ChatMessage } from "@/lib/api/types";
 import type { ChatContext } from "@/lib/chat/ChatPanelProvider";
 import { AnswerText } from "@/components/AnswerText";
 import { Citation } from "@/components/Citation";
+import { MicButton } from "@/components/capture/MicButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/common/Spinner";
@@ -168,6 +169,7 @@ export function ChatPanel({
               placeholder="Ask a question…"
               autoComplete="off"
             />
+            <MicButton onTranscript={(text) => void send(text)} disabled={ask.isPending} />
             <Button type="submit" size="icon" disabled={!input.trim() || ask.isPending}>
               {ask.isPending ? <Spinner /> : <SendHorizontal className="size-4" />}
               <span className="sr-only">Send</span>

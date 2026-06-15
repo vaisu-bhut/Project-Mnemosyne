@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Mic, Square, Users, Link2 } from "lucide-react";
 import { useTranscribe, useCommitVoiceNote } from "@/hooks/useCapture";
 import { ApiError } from "@/lib/api/client";
+import { blobToBase64, pickAudioMime } from "@/lib/audio";
 import type { CapturePreview } from "@/lib/api/types";
 import {
   Dialog,
@@ -19,22 +20,6 @@ import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/common/Spinner";
 
 type Stage = "idle" | "recording" | "transcribing" | "review" | "committing";
-
-const MIME_PREFS = ["audio/webm", "audio/mp4", "audio/ogg"];
-
-function pickMime(): string {
-  if (typeof MediaRecorder === "undefined") return "";
-  return MIME_PREFS.find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve((reader.result as string).split(",")[1] ?? "");
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
 
 export function VoiceCaptureDialog({
   open,
@@ -70,7 +55,7 @@ export function VoiceCaptureDialog({
   async function startRecording() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = pickMime();
+      const mime = pickAudioMime();
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       chunksRef.current = [];
       rec.ondataavailable = (e) => e.data.size > 0 && chunksRef.current.push(e.data);

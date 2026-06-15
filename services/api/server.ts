@@ -174,6 +174,7 @@ const TranscribeBody = z.object({
   audio: z.string().min(1), // base64-encoded clip
   mimeType: z.string().min(1),
 });
+const TranscribeOnlyBody = TranscribeBody;
 const CommitVoiceBody = z.object({
   transcript: z.string().min(1),
   artifactKey: z.string().optional(),
@@ -358,6 +359,18 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   app.post("/search", async (req) => {
     const { query, k } = SearchBody.parse(req.body);
     return searchMemory({ db, embedder: queryEmbedder }, req.user!.id, query, k);
+  });
+
+  // Transcribe-only: speech → text for voice-driven Ask. Unlike /capture/*, it
+  // stores nothing and extracts nothing — just returns the spoken question.
+  app.post("/transcribe", async (req, reply) => {
+    if (!transcriber.available) {
+      reply.code(503);
+      return { error: "Transcription is not configured on this server." };
+    }
+    const { audio, mimeType } = TranscribeOnlyBody.parse(req.body);
+    const transcript = await transcriber.transcribe(audio, mimeType);
+    return { transcript };
   });
 
   // Grounded question answering with citations.

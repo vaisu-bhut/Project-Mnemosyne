@@ -151,6 +151,12 @@ export const captureApi = {
   // Step 2: confirm → create the voice_note episode + extract into the graph.
   commit: (input: { transcript: string; artifactKey?: string; title?: string }) =>
     request<CommitVoiceResult>("/capture/commit", { method: "POST", body: input }),
+  // Transcribe-only (voice-driven Ask): no storage, no extraction.
+  transcribeText: (audio: string, mimeType: string) =>
+    request<{ transcript: string }>("/transcribe", {
+      method: "POST",
+      body: { audio, mimeType },
+    }),
 };
 
 export const agentsApi = {
