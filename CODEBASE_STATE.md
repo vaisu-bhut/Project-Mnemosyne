@@ -66,14 +66,13 @@ Project-Mnemosyne/
     ingest/                    # connector.ts, pipeline.ts, filesystem.ts, emailText.ts,
                                #   gmail.ts, gcal.ts, gcontacts.ts (Google),
                                #   outlookMail.ts, outlookCalendar.ts, outlookContacts.ts (MS Graph)
-    memory/                    # encode.ts (write); retrieve.ts (read, guardian-gated;
+    memory/                    # encode.ts (write); retrieve.ts (read;
                                #   ask()/searchMemory take optional scope+history for chat;
                                #   ask() enforces a hard evidence guard → NO_EVIDENCE_ANSWER)
     consolidate/               # index.ts + entities(alias), dedup, contradictions,
                                #   decay, retention, summarize, util ("sleep" layer)
     semantic/                  # entityMatch, nli, intent, index (optional LLM upgrades)
     agents/                    # conductor, briefer, nudger, people, index (agent mesh)
-    guardian/index.ts          # privacy compartments (read gating + encryption)
     queue/index.ts             # BullMQ queue/job definitions
     api/                       # index.ts (entry), server.ts (Fastify routes)
     worker/index.ts            # BullMQ workers + schedulers
@@ -112,7 +111,7 @@ Project-Mnemosyne/
                      #     upcoming every 60s, fires browser notifications for new salient
                      #     nudges + briefings ~15 min pre-meeting; dedup persisted, lib/notify)
     src/hooks/       react-query hooks (useSources, usePeople, useBrowse[episodes/facts/update/delete], ...)
-    src/lib/         api/(client,endpoints,types,casing), auth/, mode/, chat/ChatPanelProvider, citations, format, utils
+    src/lib/         api/(client,endpoints,types,casing), auth/, chat/ChatPanelProvider, citations, notify, format, utils
 ```
 
 ## Key Files
@@ -123,8 +122,8 @@ Project-Mnemosyne/
   `permissions` {read/write/delete/mode} — only `read` enforced, rest are definitions
   for the future write layer; `/sources/:id/ingest-status` = latest ingest_run),
   `/accounts` (GET connected accounts with computed `services[]`/`needsReauth`,
-  never tokens; DELETE :id disconnect), `/episodes` + `/facts` (paginated,
-  Guardian-filtered browse lists), `PATCH`/`DELETE /facts/:id` (edit/retract or delete a
+  never tokens; DELETE :id disconnect), `/episodes` + `/facts` (paginated
+  browse lists), `PATCH`/`DELETE /facts/:id` (edit/retract or delete a
   derived fact — episodes are never touched; GET `/facts` also returns a computed
   `decay` 0..1 + `protectedFromDecay` + `decaysInDays` so forgetting is visible),
   `/entities/merge` (POST {survivorId, dupeId} — user-owned-only entity merge via
@@ -132,8 +131,8 @@ Project-Mnemosyne/
   {entityId/sourceId/kind} + `history` for the page-context chat; hard evidence
   guard — refuses with a fixed answer when nothing retrieved is within the
   relevance threshold, no generator call), `GET /episodes/:id/trace` (extraction
-  trace: source episode + facts derived from it with reinforcement/decay history,
-  Guardian-gated), `/consolidate`,
+  trace: source episode + facts derived from it with reinforcement/decay history),
+  `/consolidate`,
   `/retention`, `/contradictions`, `/entities/:id/summarize`,
   `/episodes/:id/forget`, `/open-loops`, `/conduct`, `/agents/nudger/run`,
   `/mind`, `/people/health` (incl. cadence trend), `/people/:id/brief`,
@@ -186,9 +185,6 @@ Project-Mnemosyne/
   contradictions worth resolving [kind=contradiction], relationship alerts — all
   snooze-aware via nudge_snoozes), Briefer (pre-meeting briefings), Conductor
   (routes query by intent → agent or recall fallback).
-- `services/guardian/index.ts` — privacy compartments enforced at retrieval:
-  modes guest / work / external / default; gates facts, episodes, entities;
-  sensitive tier encrypted at rest (AES-256-GCM).
 - `app/src/lib/api/client.ts` + `endpoints.ts` — typed fetch client to the backend;
   `casing.ts` maps snake_case ↔ camelCase. Auth tokens in `lib/auth/tokenStore.ts`.
 
@@ -234,5 +230,7 @@ Project-Mnemosyne/
 - Schema is one declarative file (no migration tool yet — `db:reset` drops/recreates).
 - Consolidation alias-merge + contradiction detection are lexical heuristics (can
   over-merge ambiguous first names); contradiction links are advisory, never auto-retract.
-- Guardian currently gates reads only (action-level vetoes / the Drafter are future work).
+- Read-only by design: no write/delete to connected accounts. No Guardian /
+  privacy-mode / sensitive-tier gating — all of a user's own memory is fully
+  visible to them (multi-tenancy still isolates by user_id).
 - Tests run on `dev` providers — no keys or network needed.

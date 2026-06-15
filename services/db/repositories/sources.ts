@@ -18,7 +18,6 @@ export interface CreateSourceInput {
   kind: string;
   displayName: string;
   scope?: string;
-  sensitive?: boolean;
   config?: Record<string, unknown>;
   /** For OAuth-backed kinds: the connected account this source pulls from. */
   oauthAccountId?: string | null;
@@ -37,7 +36,6 @@ export async function createSource(
       kind: input.kind,
       display_name: input.displayName,
       scope: input.scope,
-      sensitive: input.sensitive,
       config: input.config,
       oauth_account_id: input.oauthAccountId ?? null,
       permissions: input.permissions,
@@ -96,17 +94,16 @@ export async function listSources(db: Db, userId: string): Promise<Source[]> {
     .execute();
 }
 
-/** Set a source's privacy classification (Guardian inputs). Owner-scoped. */
+/** Update a source's scope / permissions. Owner-scoped. */
 export async function classifySource(
   db: Db,
   userId: string,
   sourceId: string,
-  patch: { sensitive?: boolean; scope?: string; permissions?: SourcePermissions },
+  patch: { scope?: string; permissions?: SourcePermissions },
 ): Promise<Source | undefined> {
   return db
     .updateTable("sources")
     .set({
-      ...(patch.sensitive !== undefined ? { sensitive: patch.sensitive } : {}),
       ...(patch.scope !== undefined ? { scope: patch.scope } : {}),
       ...(patch.permissions !== undefined ? { permissions: patch.permissions } : {}),
     })

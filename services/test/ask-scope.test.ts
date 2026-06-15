@@ -47,7 +47,7 @@ describe("ask() page-context scope", () => {
   });
 
   it("entity-scoped ask retrieves only that entity's facts", async () => {
-    const r = await ask({ db, embedder: queryEmbedder, generator }, userId, Q, 10, {}, {
+    const r = await ask({ db, embedder: queryEmbedder, generator }, userId, Q, 10, {
       scope: { entityId: alice },
     });
     const statements = r.used.facts.map((f) => f.statement);

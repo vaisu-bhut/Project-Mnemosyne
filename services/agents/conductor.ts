@@ -3,7 +3,6 @@ import { listMind, type Db } from "../db/index.js";
 import type { Embedder } from "../embeddings/index.js";
 import type { TextGenerator } from "../llm/index.js";
 import { ask } from "../memory/retrieve.js";
-import type { AccessContext } from "../guardian/index.js";
 import { classifyIntent } from "../semantic/index.js";
 import { briefEntity } from "./briefer.js";
 import { relationshipAlerts } from "./people.js";
@@ -12,8 +11,6 @@ export interface ConductorDeps {
   db: Db;
   queryEmbedder: Embedder;
   generator: TextGenerator;
-  /** Key to decrypt sensitive-tier episode bodies at rest (optional). */
-  encKey?: string;
 }
 
 export type Intent = "recall" | "briefing" | "people" | "nudges";
@@ -61,14 +58,12 @@ export async function route(
   deps: ConductorDeps,
   userId: string,
   query: string,
-  ctx: AccessContext = {},
   semantic = false,
 ): Promise<RouteResult> {
   const askDeps = {
     db: deps.db,
     embedder: deps.queryEmbedder,
     generator: deps.generator,
-    encKey: deps.encKey,
   };
 
   // Determine intent (+ optional target person) — LLM classifier when enabled,
@@ -104,8 +99,8 @@ export async function route(
         return { intent, via: "briefer", result: await briefEntity(deps, userId, entity.id) };
       }
     }
-    return { intent: "recall", via: "fallback", result: await ask(askDeps, userId, query, 5, ctx) };
+    return { intent: "recall", via: "fallback", result: await ask(askDeps, userId, query, 5) };
   }
 
-  return { intent: "recall", via: "librarian", result: await ask(askDeps, userId, query, 5, ctx) };
+  return { intent: "recall", via: "librarian", result: await ask(askDeps, userId, query, 5) };
 }

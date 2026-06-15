@@ -66,7 +66,6 @@ export interface SourcesTable {
   kind: string;
   display_name: string;
   scope: ColumnType<string, string | undefined, string>;
-  sensitive: ColumnType<boolean, boolean | undefined, boolean>;
   config: JsonbColumn;
   oauth_account_id: NullableText;
   permissions: JsonbColumn;

@@ -30,7 +30,6 @@ beforeEach(async () => {
       kind: "test",
       displayName: "B",
       scope: "health",
-      sensitive: true,
     })
   ).id;
 });

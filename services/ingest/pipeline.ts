@@ -8,7 +8,6 @@ import {
   type Source,
 } from "../db/index.js";
 import type { AppConfig } from "../config/index.js";
-import { encryptText } from "../auth/crypto.js";
 import type { Embedder } from "../embeddings/index.js";
 import type { Extractor, EntityType } from "../extract/index.js";
 import { recordEntity, recordEpisode, recordFact } from "../memory/encode.js";
@@ -20,8 +19,6 @@ export interface IngestDeps {
   db: Db;
   store: ArtifactStore;
   embedder: Embedder;
-  /** When set, encrypt the sensitive tier (sensitive sources) at rest. */
-  encKey?: string;
 }
 
 export interface IngestSummary {
@@ -127,32 +124,22 @@ export async function runIngest(
   const cursor = typeof priorConfig.cursor === "string" ? priorConfig.cursor : null;
   const { items, cursor: nextCursor } = await connector.pull({ cursor });
 
-  // Sensitive-tier encryption: encrypt raw payloads + episode bodies at rest.
-  const encrypt = source.sensitive && deps.encKey ? deps.encKey : null;
-
   const episodeIds: string[] = [];
   for (const item of items) {
     const key = artifactKey(source, item.externalId);
-    const rawToStore = encrypt
-      ? Buffer.from(encryptText(item.raw.toString("base64"), encrypt))
-      : item.raw;
-    await deps.store.putArtifact(key, rawToStore, item.contentType);
+    await deps.store.putArtifact(key, item.raw, item.contentType);
 
     // Persist attachments to the object store; reference them on the episode.
     const attachmentKeys: { key: string; filename: string; contentType: string }[] = [];
     for (const att of item.attachments ?? []) {
       const attKey = `${key}/att/${att.filename}`;
-      const attData = encrypt
-        ? Buffer.from(encryptText(att.data.toString("base64"), encrypt))
-        : att.data;
-      await deps.store.putArtifact(attKey, attData, att.contentType);
+      await deps.store.putArtifact(attKey, att.data, att.contentType);
       attachmentKeys.push({ key: attKey, filename: att.filename, contentType: att.contentType });
     }
 
     const meta = {
       ...(item.meta ?? {}),
       ...(attachmentKeys.length ? { attachments: attachmentKeys } : {}),
-      ...(encrypt ? { encrypted: true } : {}),
     };
 
     const episode = await recordEpisode(
@@ -164,9 +151,7 @@ export async function runIngest(
         externalId: item.externalId,
         kind: item.kind,
         title: item.title ?? null,
-        // Embed from plaintext; store ciphertext when the source is sensitive.
-        body: encrypt ? encryptText(item.body, encrypt) : item.body,
-        embedText: encrypt ? item.body : undefined,
+        body: item.body,
         artifactUri: key,
         meta,
       },

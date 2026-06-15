@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { Archive, FileText, GitBranch, Trash2, X } from "lucide-react";
 import type { EpisodeHit, RetentionTier, TraceFact } from "@/lib/api/types";
 import { useEpisodeTrace, useForgetEpisode, useSetRetention } from "@/hooks/useRetrieve";
-import { useMode } from "@/lib/mode/ModeProvider";
 import { ApiError } from "@/lib/api/client";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -35,10 +34,9 @@ export function EpisodeDrawer({
   onOpenChange: (open: boolean) => void;
   onForgotten?: (episodeId: string) => void;
 }) {
-  const { mode, includeSensitive } = useMode();
   const forget = useForgetEpisode();
   const retention = useSetRetention();
-  const trace = useEpisodeTrace(open ? episodeId : null, { mode, includeSensitive });
+  const trace = useEpisodeTrace(open ? episodeId : null);
   const [confirmForget, setConfirmForget] = useState(false);
   const [tier, setTier] = useState<RetentionTier>("standard");
 

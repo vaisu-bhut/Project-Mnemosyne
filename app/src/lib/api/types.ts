@@ -52,7 +52,6 @@ export interface Source {
   kind: SourceKind;
   displayName: string;
   scope: string;
-  sensitive: boolean;
   config: Record<string, unknown> | null;
   oauthAccountId: string | null;
   permissions: SourcePermissions;
@@ -63,7 +62,6 @@ export interface CreateSourceInput {
   kind: SourceKind;
   displayName: string;
   scope?: string;
-  sensitive?: boolean;
   config?: Record<string, unknown>;
   /** For OAuth-backed kinds: which connected account this source pulls from. */
   oauthAccountId?: string;
@@ -92,7 +90,6 @@ export interface Account {
 
 export interface ClassifySourceInput {
   scope?: string;
-  sensitive?: boolean;
   permissions?: SourcePermissions;
 }
 
@@ -122,8 +119,6 @@ export interface IngestRun {
 }
 
 // --- Retrieval (BACKEND.md §6; /search and /ask are camelCase) ---
-
-export type Mode = "default" | "work" | "guest";
 
 /** The "verify on click" anchor back to a claim's source. */
 export interface Citation {
@@ -169,8 +164,6 @@ export interface Answer {
 
 export interface RetrieveInput {
   k?: number;
-  mode?: Mode;
-  includeSensitive?: boolean;
 }
 
 // --- Page-context chat ("ask your brain") ---
@@ -257,8 +250,6 @@ export interface ListEpisodesParams {
   offset?: number;
   kind?: string;
   sourceId?: string;
-  mode?: Mode;
-  includeSensitive?: boolean;
 }
 
 export interface ListFactsParams {
@@ -266,8 +257,6 @@ export interface ListFactsParams {
   offset?: number;
   status?: FactStatus;
   subjectId?: string;
-  mode?: Mode;
-  includeSensitive?: boolean;
 }
 
 export type RetentionTier = "raw_forever" | "standard" | "ephemeral";

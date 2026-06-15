@@ -31,8 +31,6 @@ import {
   type OauthAccount,
 } from "../db/index.js";
 import { servicesFromScope } from "../auth/scopes.js";
-import { resolveVisibility, type AccessContext, type Mode } from "../guardian/index.js";
-import { decryptText } from "../auth/crypto.js";
 import {
   briefEntity,
   peopleGraph,
@@ -102,7 +100,6 @@ const CreateSourceBody = z.object({
   kind: z.string().min(1),
   displayName: z.string().min(1),
   scope: z.string().optional(),
-  sensitive: z.boolean().optional(),
   config: z.record(z.unknown()).optional(),
   permissions: PermissionsField.optional(),
   oauthAccountId: z.string().uuid().optional(),
@@ -135,14 +132,9 @@ function toAccountView(a: OauthAccount) {
     needsReauth: !a.refresh_token && expired,
   };
 }
-const ModeField = {
-  mode: z.enum(["default", "work", "guest"]).optional(),
-  includeSensitive: z.boolean().optional(),
-};
 const SearchBody = z.object({
   query: z.string().min(1),
   k: z.number().int().positive().max(50).optional(),
-  ...ModeField,
 });
 const ScopeField = z
   .object({
@@ -160,9 +152,8 @@ const AskBody = z.object({
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1) }))
     .max(20)
     .optional(),
-  ...ModeField,
 });
-const ConductBody = z.object({ query: z.string().min(1), ...ModeField });
+const ConductBody = z.object({ query: z.string().min(1) });
 const MergeEntitiesBody = z.object({
   // The entity to keep; `dupeId` is folded into it and removed.
   survivorId: z.string().uuid(),
@@ -180,7 +171,6 @@ const RetentionBody = z.object({
   vaulted: z.boolean().optional(),
 });
 const ClassifyBody = z.object({
-  sensitive: z.boolean().optional(),
   scope: z.string().min(1).optional(),
   permissions: PermissionsField.optional(),
 });
@@ -189,50 +179,24 @@ const UpdateFactBody = z.object({
   status: z.enum(["active", "stale", "retracted"]).optional(),
 });
 
-// Query params arrive as strings; coerce. includeSensitive must NOT use
-// z.coerce.boolean (which treats "false" as truthy) — map it explicitly.
-const boolParam = z.enum(["true", "false"]).transform((v) => v === "true");
+// Query params arrive as strings; coerce.
 const EpisodesQuery = z.object({
   limit: z.coerce.number().int().positive().max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
   kind: z.string().min(1).optional(),
   sourceId: z.string().uuid().optional(),
-  mode: z.enum(["default", "work", "guest"]).optional(),
-  includeSensitive: boolParam.optional(),
 });
 const FactsQuery = z.object({
   limit: z.coerce.number().int().positive().max(200).optional(),
   offset: z.coerce.number().int().min(0).optional(),
   status: z.enum(["active", "stale", "retracted"]).optional(),
   subjectId: z.string().uuid().optional(),
-  mode: z.enum(["default", "work", "guest"]).optional(),
-  includeSensitive: boolParam.optional(),
 });
 
-function accessContext(body: { mode?: Mode; includeSensitive?: boolean }): AccessContext {
-  return { mode: body.mode, includeSensitive: body.includeSensitive };
-}
-
-/** Build a plaintext snippet from an episode body, decrypting the sensitive
- * tier when authorized (mirrors memory/retrieve.ts). Returns null if withheld. */
-function bodySnippet(
-  body: string | null,
-  meta: unknown,
-  encKey: string | undefined,
-  max = 200,
-): string | null {
+/** Build a plaintext snippet from an episode body. */
+function bodySnippet(body: string | null, max = 200): string | null {
   if (body == null) return null;
-  const encrypted = (meta as { encrypted?: boolean })?.encrypted === true;
-  let text = body;
-  if (encrypted) {
-    if (!encKey) return null;
-    try {
-      text = decryptText(body, encKey);
-    } catch {
-      return null;
-    }
-  }
-  const s = text.replace(/\s+/g, " ").trim();
+  const s = body.replace(/\s+/g, " ").trim();
   return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
@@ -244,7 +208,6 @@ function isPublicPath(path: string): boolean {
 export function buildServer(deps: ServerDeps): FastifyInstance {
   const app = Fastify({ logger: true });
   const { db, store, redis, config, queryEmbedder, generator, ingestQueue, consolidateOptions, relationshipStaleDays, semantic } = deps;
-  const encKey = config.TOKEN_ENC_KEY;
 
   // CORS for the browser frontend (app/). Allowed origins come from WEB_ORIGIN
   // (comma-separated, or "*"). In dev the Next.js app proxies same-origin so this
@@ -328,7 +291,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     reply.code(204);
   });
 
-  // Classify a source for the Guardian (sensitive flag / scope).
+  // Update a source's scope / permissions.
   app.patch<{ Params: { id: string } }>("/sources/:id", async (req, reply) => {
     const patch = ClassifyBody.parse(req.body);
     const source = await classifySource(db, req.user!.id, req.params.id, patch);
@@ -374,35 +337,32 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
     };
   });
 
-  // Cited hybrid search over the caller's memory (Guardian-filtered by mode).
+  // Cited hybrid search over the caller's memory.
   app.post("/search", async (req) => {
-    const { query, k, ...mode } = SearchBody.parse(req.body);
-    return searchMemory({ db, embedder: queryEmbedder, encKey }, req.user!.id, query, k, accessContext(mode));
+    const { query, k } = SearchBody.parse(req.body);
+    return searchMemory({ db, embedder: queryEmbedder }, req.user!.id, query, k);
   });
 
-  // Grounded question answering with citations (Guardian-filtered by mode).
+  // Grounded question answering with citations.
   app.post("/ask", async (req) => {
-    const { question, k, scope, history, ...mode } = AskBody.parse(req.body);
+    const { question, k, scope, history } = AskBody.parse(req.body);
     return ask(
-      { db, embedder: queryEmbedder, generator, encKey },
+      { db, embedder: queryEmbedder, generator },
       req.user!.id,
       question,
       k,
-      accessContext(mode),
       { scope, history },
     );
   });
 
-  // Browse the caller's episodes (newest first, Guardian-filtered, paginated).
+  // Browse the caller's episodes (newest first, paginated).
   app.get("/episodes", async (req) => {
     const q = EpisodesQuery.parse(req.query);
-    const { deniedSourceIds } = await resolveVisibility(db, req.user!.id, accessContext(q));
     const rows = await listEpisodes(db, req.user!.id, {
       limit: q.limit,
       offset: q.offset,
       kind: q.kind,
       sourceId: q.sourceId,
-      excludeSourceIds: deniedSourceIds,
     });
     return rows.map((e) => ({
       id: e.id,
@@ -410,21 +370,19 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       kind: e.kind,
       title: e.title,
       sourceId: e.source_id,
-      snippet: bodySnippet(e.body, e.meta, encKey),
+      snippet: bodySnippet(e.body),
       artifactUri: e.artifact_uri,
     }));
   });
 
-  // Browse the caller's facts (most-reinforced first, Guardian-filtered, paginated).
+  // Browse the caller's facts (most-reinforced first, paginated).
   app.get("/facts", async (req) => {
     const q = FactsQuery.parse(req.query);
-    const { deniedSourceIds } = await resolveVisibility(db, req.user!.id, accessContext(q));
     const rows = await listFacts(db, req.user!.id, {
       limit: q.limit,
       offset: q.offset,
       status: q.status,
       subjectId: q.subjectId,
-      excludeSourceIds: deniedSourceIds,
     });
     const maxAgeDays = consolidateOptions.decayMaxAgeDays ?? 90;
     const MIN_REINFORCED = 2; // mirrors decayFacts: reinforced facts are protected
@@ -495,17 +453,11 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   // Extraction trace for one episode: the source, then the facts derived from
   // it with their trust/reinforcement history. Powers the Ask citation → source
   // → "from this, I derived this, last reinforced N days ago" panel.
-  app.get<{ Params: { id: string }; Querystring: { mode?: Mode; includeSensitive?: boolean } }>(
+  app.get<{ Params: { id: string } }>(
     "/episodes/:id/trace",
     async (req, reply) => {
       const episode = await getEpisode(db, req.user!.id, req.params.id);
       if (!episode) {
-        reply.code(404);
-        return { error: "episode not found" };
-      }
-      // Honor Guardian: if this episode's source is hidden in the active mode, withhold it.
-      const { deniedSourceIds } = await resolveVisibility(db, req.user!.id, accessContext(req.query));
-      if (deniedSourceIds.includes(episode.source_id)) {
         reply.code(404);
         return { error: "episode not found" };
       }
@@ -520,7 +472,7 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
           kind: episode.kind,
           title: episode.title,
           sourceId: episode.source_id,
-          snippet: bodySnippet(episode.body, episode.meta, encKey, 600),
+          snippet: bodySnippet(episode.body, 600),
           artifactUri: episode.artifact_uri,
         },
         facts: facts.map((f) => {
@@ -613,19 +565,19 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   // Pre-meeting briefing for a person.
   app.get<{ Params: { id: string } }>("/people/:id/brief", async (req) => {
-    return briefEntity({ db, generator, encKey }, req.user!.id, req.params.id);
+    return briefEntity({ db, generator }, req.user!.id, req.params.id);
   });
 
   // Time-triggered pre-meeting briefings for upcoming calendar events.
   app.get<{ Querystring: { hours?: string } }>("/briefings/upcoming", async (req) => {
     const withinHours = req.query.hours ? Number(req.query.hours) : 24;
-    return upcomingBriefings({ db, generator, encKey }, req.user!.id, { withinHours });
+    return upcomingBriefings({ db, generator }, req.user!.id, { withinHours });
   });
 
   // The Conductor: route a free-text query to the right agent.
   app.post("/conduct", async (req) => {
-    const { query, ...mode } = ConductBody.parse(req.body);
-    return route({ db, queryEmbedder, generator, encKey }, req.user!.id, query, accessContext(mode), semantic);
+    const { query } = ConductBody.parse(req.body);
+    return route({ db, queryEmbedder, generator }, req.user!.id, query, semantic);
   });
 
   // Dismiss a blackboard entry.

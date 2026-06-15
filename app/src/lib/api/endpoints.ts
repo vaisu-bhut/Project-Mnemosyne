@@ -21,7 +21,6 @@ import type {
   ListFactsParams,
   LoopStatus,
   UpdateFactInput,
-  Mode,
   NudgerResult,
   OpenLoop,
   PeopleGraph,
@@ -106,15 +105,10 @@ export const episodesApi = {
         offset: params.offset,
         kind: params.kind,
         sourceId: params.sourceId,
-        mode: params.mode,
-        includeSensitive: params.includeSensitive,
       },
     }),
   // The extraction trace: source episode + the facts derived from it.
-  trace: (id: string, opts: { mode?: Mode; includeSensitive?: boolean } = {}) =>
-    request<EpisodeTrace>(`/episodes/${id}/trace`, {
-      query: { mode: opts.mode, includeSensitive: opts.includeSensitive },
-    }),
+  trace: (id: string) => request<EpisodeTrace>(`/episodes/${id}/trace`),
 };
 export const factsApi = {
   update: (id: string, input: UpdateFactInput) =>
@@ -127,8 +121,6 @@ export const factsApi = {
         offset: params.offset,
         status: params.status,
         subjectId: params.subjectId,
-        mode: params.mode,
-        includeSensitive: params.includeSensitive,
       },
     }),
 };
@@ -159,8 +151,8 @@ export const agentsApi = {
       body: { hours },
     }),
   runNudger: () => request<NudgerResult>("/agents/nudger/run", { method: "POST", body: {} }),
-  conduct: (query: string, opts: { mode?: Mode; includeSensitive?: boolean } = {}) =>
-    request<RouteResult>("/conduct", { method: "POST", body: { query, ...opts } }),
+  conduct: (query: string) =>
+    request<RouteResult>("/conduct", { method: "POST", body: { query } }),
 };
 
 export const peopleApi = {

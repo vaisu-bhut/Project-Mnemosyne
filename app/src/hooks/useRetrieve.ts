@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { episodesApi, memoryApi } from "@/lib/api/endpoints";
-import type { Mode, RetentionInput, RetrieveInput } from "@/lib/api/types";
+import type { RetentionInput, RetrieveInput } from "@/lib/api/types";
 
 export function useSearch() {
   return useMutation({
@@ -24,13 +24,10 @@ export function useForgetEpisode() {
 
 /** The extraction trace for an open episode (facts derived from it + their
  * reinforcement history). Disabled until an episode id is present. */
-export function useEpisodeTrace(
-  episodeId: string | null,
-  opts: { mode?: Mode; includeSensitive?: boolean } = {},
-) {
+export function useEpisodeTrace(episodeId: string | null) {
   return useQuery({
-    queryKey: ["episode-trace", episodeId, opts.mode, opts.includeSensitive],
-    queryFn: () => episodesApi.trace(episodeId!, opts),
+    queryKey: ["episode-trace", episodeId],
+    queryFn: () => episodesApi.trace(episodeId!),
     enabled: Boolean(episodeId),
   });
 }

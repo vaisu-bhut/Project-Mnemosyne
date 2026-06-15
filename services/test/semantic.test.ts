@@ -92,7 +92,7 @@ describe("semantic contradiction (NLI)", () => {
 describe("semantic Conductor routing", () => {
   it("routes by LLM intent without trigger keywords", async () => {
     const gen = stub({ intent: "people", target: null });
-    const res = await route({ db, queryEmbedder, generator: gen }, userId, "am I drifting from anyone?", {}, true);
+    const res = await route({ db, queryEmbedder, generator: gen }, userId, "am I drifting from anyone?", true);
     expect(res.intent).toBe("people");
     expect(res.via).toBe("people");
   });
@@ -100,7 +100,7 @@ describe("semantic Conductor routing", () => {
   it("uses the LLM-extracted target for briefings", async () => {
     await upsertEntity(db, { userId, type: "person", canonicalName: "Sara Lin" });
     const gen = stub({ intent: "briefing", target: "Sara Lin" });
-    const res = await route({ db, queryEmbedder, generator: gen }, userId, "what should I know before my 1:1", {}, true);
+    const res = await route({ db, queryEmbedder, generator: gen }, userId, "what should I know before my 1:1", true);
     expect(res.intent).toBe("briefing");
     expect(res.via).toBe("briefer");
     expect((res.result as { name: string }).name).toBe("Sara Lin");

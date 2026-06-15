@@ -46,7 +46,6 @@ export function ClassifySourceDialog({
 // so no effect-driven syncing is needed.
 function ClassifyForm({ source, onDone }: { source: Source; onDone: () => void }) {
   const [scope, setScope] = useState(source.scope);
-  const [sensitive, setSensitive] = useState(source.sensitive);
   const classify = useClassifySource();
 
   const scopeOptions = SCOPE_OPTIONS.includes(scope as (typeof SCOPE_OPTIONS)[number])
@@ -58,7 +57,7 @@ function ClassifyForm({ source, onDone }: { source: Source; onDone: () => void }
     try {
       await classify.mutateAsync({
         id: source.id,
-        input: { scope, sensitive, permissions: DEFAULT_PERMISSIONS },
+        input: { scope, permissions: DEFAULT_PERMISSIONS },
       });
       toast.success("Connector settings updated");
       onDone();
@@ -71,9 +70,7 @@ function ClassifyForm({ source, onDone }: { source: Source; onDone: () => void }
     <>
       <DialogHeader>
         <DialogTitle>Connector settings</DialogTitle>
-        <DialogDescription>
-          {source.displayName} — Guardian visibility and per-app permissions.
-        </DialogDescription>
+        <DialogDescription>{source.displayName} — scope and ingestion settings.</DialogDescription>
       </DialogHeader>
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
@@ -91,15 +88,6 @@ function ClassifyForm({ source, onDone }: { source: Source; onDone: () => void }
             ))}
           </select>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="size-4 accent-primary"
-            checked={sensitive}
-            onChange={(e) => setSensitive(e.target.checked)}
-          />
-          Sensitive (encrypted at rest; hidden in guest mode)
-        </label>
         <PermissionsEditor />
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onDone}>

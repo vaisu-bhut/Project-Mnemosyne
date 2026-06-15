@@ -6,15 +6,11 @@ import {
 } from "../db/index.js";
 import type { Embedder } from "../embeddings/index.js";
 import type { TextGenerator } from "../llm/index.js";
-import { resolveVisibility, type AccessContext } from "../guardian/index.js";
-import { decryptText } from "../auth/crypto.js";
 
 export interface SearchDeps {
   db: Db;
   /** Should be a query embedder (RETRIEVAL_QUERY for Gemini). */
   embedder: Embedder;
-  /** Key to decrypt sensitive-tier episode bodies at rest (optional). */
-  encKey?: string;
 }
 
 /** A citation back to the source of a claim — the "verify on click" anchor. */
@@ -83,12 +79,9 @@ export async function searchMemory(
   userId: string,
   query: string,
   k = 5,
-  ctx: AccessContext = {},
   scope: RetrieveScope = {},
 ): Promise<SearchResult> {
-  // Guardian: hide sources that aren't visible in this context.
-  const { deniedSourceIds } = await resolveVisibility(deps.db, userId, ctx);
-  const base = { excludeSourceIds: deniedSourceIds, sourceId: scope.sourceId };
+  const base = { sourceId: scope.sourceId };
   // Page-context scoping: facts by subject entity; episodes by mentioned entity / kind.
   const factOpts = { ...base, subjectId: scope.entityId };
   const epOpts = { ...base, mentionedByEntityId: scope.entityId, kind: scope.kind };
@@ -99,19 +92,6 @@ export async function searchMemory(
     searchEpisodesByVector(deps.db, userId, qv, k, epOpts),
     searchEntitiesByVector(deps.db, userId, qv, k, base),
   ]);
-
-  // Decrypt sensitive-tier bodies that were encrypted at rest (when authorized).
-  const readBody = (e: (typeof episodes)[number]): string | null => {
-    if (e.body == null) return null;
-    const encrypted = (e.meta as { encrypted?: boolean }).encrypted === true;
-    if (!encrypted) return e.body;
-    if (!deps.encKey) return null; // gated context without the key: hide it
-    try {
-      return decryptText(e.body, deps.encKey);
-    } catch {
-      return null;
-    }
-  };
 
   return {
     facts: facts.map((f) => ({
@@ -124,7 +104,7 @@ export async function searchMemory(
     episodes: episodes.map((e) => ({
       id: e.id,
       title: e.title,
-      snippet: snippet(readBody(e)),
+      snippet: snippet(e.body),
       occurredAt: e.occurred_at,
       distance: e.distance,
       citation: { episodeId: e.id, sourceId: e.source_id },
@@ -179,10 +159,9 @@ export async function ask(
   userId: string,
   question: string,
   k = 5,
-  ctx: AccessContext = {},
   options: AskOptions = {},
 ): Promise<Answer> {
-  const result = await searchMemory(deps, userId, question, k, ctx, options.scope ?? {});
+  const result = await searchMemory(deps, userId, question, k, options.scope ?? {});
   const facts = result.facts;
   const episodes = result.episodes;
   const citations: Citation[] = [

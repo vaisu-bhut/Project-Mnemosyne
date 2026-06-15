@@ -95,7 +95,7 @@ const ingestWorker = new Worker<IngestJob>(
     try {
       const connector = await connectorForSource(source, { db, config });
       summary = await runIngest(
-        { db, store, embedder, encKey: config.TOKEN_ENC_KEY },
+        { db, store, embedder },
         source,
         connector,
         {
@@ -188,7 +188,7 @@ const nudgeWorker = new Worker<NudgeJob>(
     const userIds = job.data.userId ? [job.data.userId] : await listUserIds(db);
     for (const userId of userIds) {
       await runNudger(db, userId, { staleDays: config.RELATIONSHIP_STALE_DAYS });
-      await upcomingBriefings({ db, generator, encKey: config.TOKEN_ENC_KEY }, userId, {
+      await upcomingBriefings({ db, generator }, userId, {
         withinHours: config.BRIEFING_LOOKAHEAD_HOURS,
         post: true,
       });

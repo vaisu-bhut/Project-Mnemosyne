@@ -6,7 +6,6 @@ import { useMutation } from "@tanstack/react-query";
 import { Brain, SendHorizontal, Sparkles, X } from "lucide-react";
 import { memoryApi } from "@/lib/api/endpoints";
 import { ApiError } from "@/lib/api/client";
-import { useMode } from "@/lib/mode/ModeProvider";
 import { useEpisodeDrawer } from "@/components/episodes/EpisodeDrawerProvider";
 import type { Answer, ChatMessage } from "@/lib/api/types";
 import type { ChatContext } from "@/lib/chat/ChatPanelProvider";
@@ -32,7 +31,6 @@ export function ChatPanel({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { mode, includeSensitive } = useMode();
   const { register } = useEpisodeDrawer();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
@@ -47,7 +45,7 @@ export function ChatPanel({
 
   const ask = useMutation({
     mutationFn: ({ question, history }: { question: string; history: ChatMessage[] }) =>
-      memoryApi.ask(question, { mode, includeSensitive, scope: context?.scope, history }),
+      memoryApi.ask(question, { scope: context?.scope, history }),
   });
 
   // Autoscroll to the latest turn.

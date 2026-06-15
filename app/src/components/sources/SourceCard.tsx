@@ -79,7 +79,6 @@ export function SourceCard({
 
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge variant="outline">{source.scope}</Badge>
-        {source.sensitive && <Badge variant="destructive">sensitive</Badge>}
         {needsReauth && (
           <Badge variant="warning">
             <AlertTriangle className="size-3" /> needs reauth

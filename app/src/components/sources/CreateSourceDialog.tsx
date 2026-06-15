@@ -37,7 +37,6 @@ export function CreateSourceDialog({
   const [displayName, setDisplayName] = useState("");
   const [dir, setDir] = useState("examples/journal");
   const [scope, setScope] = useState<string>("personal");
-  const [sensitive, setSensitive] = useState(false);
   const [accountId, setAccountId] = useState<string>("");
   const create = useCreateSource();
   const accounts = useAccounts();
@@ -56,7 +55,6 @@ export function CreateSourceDialog({
     setDisplayName("");
     setDir("examples/journal");
     setScope("personal");
-    setSensitive(false);
     setAccountId("");
   }
 
@@ -75,7 +73,6 @@ export function CreateSourceDialog({
       kind,
       displayName: name,
       scope,
-      sensitive,
       permissions: DEFAULT_PERMISSIONS,
       config: kind === "filesystem" ? { dir: dir.trim() } : {},
       ...(meta.oauth && accountId ? { oauthAccountId: accountId } : {}),
@@ -174,31 +171,20 @@ export function CreateSourceDialog({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="scope">Scope</Label>
-              <select
-                id="scope"
-                className={selectClass}
-                value={scope}
-                onChange={(e) => setScope(e.target.value)}
-              >
-                {SCOPE_OPTIONS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <label className="mt-6 flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="size-4 accent-primary"
-                checked={sensitive}
-                onChange={(e) => setSensitive(e.target.checked)}
-              />
-              Sensitive
-            </label>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="scope">Scope</Label>
+            <select
+              id="scope"
+              className={selectClass}
+              value={scope}
+              onChange={(e) => setScope(e.target.value)}
+            >
+              {SCOPE_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
           </div>
 
           <PermissionsEditor />

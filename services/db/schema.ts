@@ -87,7 +87,6 @@ CREATE TABLE sources (
   kind             text NOT NULL,
   display_name     text NOT NULL,
   scope            text NOT NULL DEFAULT 'personal',
-  sensitive        boolean NOT NULL DEFAULT false,
   config           jsonb NOT NULL DEFAULT '{}'::jsonb,
   oauth_account_id uuid REFERENCES oauth_accounts(id) ON DELETE SET NULL,
   -- Per-app permission DEFINITIONS. Only read (ingestion) is enforced today;

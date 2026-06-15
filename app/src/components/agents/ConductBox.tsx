@@ -5,7 +5,6 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Sparkles, Wand2 } from "lucide-react";
 import { useConduct } from "@/hooks/useConduct";
-import { useMode } from "@/lib/mode/ModeProvider";
 import { useEpisodeDrawer } from "@/components/episodes/EpisodeDrawerProvider";
 import { camelize } from "@/lib/api/casing";
 import { ApiError } from "@/lib/api/client";
@@ -25,7 +24,6 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/common/Spinner";
 
 export function ConductBox() {
-  const { mode, includeSensitive } = useMode();
   const { register } = useEpisodeDrawer();
   const conduct = useConduct();
   const [query, setQuery] = useState("");
@@ -35,7 +33,7 @@ export function ConductBox() {
     const q = query.trim();
     if (!q) return;
     conduct.mutate(
-      { query: q, mode, includeSensitive },
+      { query: q },
       {
         onSuccess: (data) => {
           if (data.intent === "recall") register((data.result as Answer).used.episodes);
