@@ -332,6 +332,39 @@ export interface RelationshipAlert {
   daysSinceContact: number;
 }
 
+// --- Voice capture (POST /capture/transcribe, /capture/commit) ---
+
+export interface CaptureEntity {
+  name: string;
+  type: string;
+}
+export interface CaptureRelationship {
+  from: string;
+  to: string;
+  relation: string;
+  detail: string | null;
+}
+export interface CapturePreview {
+  artifactKey: string;
+  transcript: string;
+  preview: {
+    entities: CaptureEntity[];
+    facts: { subject: string; statement: string }[];
+    openLoops: { description: string; direction: string }[];
+    relationships: CaptureRelationship[];
+  };
+}
+export interface CommitVoiceResult {
+  episodeId: string;
+  extraction: {
+    episodeId: string;
+    entities: number;
+    facts: number;
+    openLoops: number;
+    relationships: number;
+  };
+}
+
 // --- People graph (GET /graph) ---
 
 export interface PeopleGraphNode {

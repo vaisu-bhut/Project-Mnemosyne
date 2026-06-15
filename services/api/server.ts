@@ -39,8 +39,11 @@ import {
   runNudger,
   upcomingBriefings,
 } from "../agents/index.js";
-import { createQueryEmbedder, type Embedder } from "../embeddings/index.js";
+import { createEmbedder, createQueryEmbedder, type Embedder } from "../embeddings/index.js";
 import { createGenerator, type TextGenerator } from "../llm/index.js";
+import { createExtractor, type Extractor } from "../extract/index.js";
+import { createTranscriber, type Transcriber } from "../asr/index.js";
+import { commitVoiceNote, storeAudio } from "../capture/index.js";
 import { ask, searchMemory } from "../memory/retrieve.js";
 import {
   forgetEpisode,
@@ -73,7 +76,11 @@ export interface ServerDeps {
   redis: Redis;
   config: AppConfig;
   queryEmbedder: Embedder;
+  /** Document embedder for content written via the API (e.g. voice notes). */
+  embedder: Embedder;
   generator: TextGenerator;
+  extractor: Extractor;
+  transcriber: Transcriber;
   ingestQueue: Queue<IngestJob>;
   consolidateOptions: ConsolidateOptions;
   relationshipStaleDays: number;
@@ -163,6 +170,15 @@ const SnoozeBody = z.object({
   // How long to suppress the nudge. Default one day; capped at ~30 days.
   hours: z.number().positive().max(720).optional().default(24),
 });
+const TranscribeBody = z.object({
+  audio: z.string().min(1), // base64-encoded clip
+  mimeType: z.string().min(1),
+});
+const CommitVoiceBody = z.object({
+  transcript: z.string().min(1),
+  artifactKey: z.string().optional(),
+  title: z.string().optional(),
+});
 const RetentionBody = z.object({
   episodeId: z.string().uuid(),
   tier: z.enum(["raw_forever", "standard", "ephemeral"]).optional(),
@@ -206,8 +222,9 @@ function isPublicPath(path: string): boolean {
 }
 
 export function buildServer(deps: ServerDeps): FastifyInstance {
-  const app = Fastify({ logger: true });
-  const { db, store, redis, config, queryEmbedder, generator, ingestQueue, consolidateOptions, relationshipStaleDays, semantic } = deps;
+  // Raise the body limit so base64-encoded voice-note audio fits.
+  const app = Fastify({ logger: true, bodyLimit: 20 * 1024 * 1024 });
+  const { db, store, redis, config, queryEmbedder, embedder, generator, extractor, transcriber, ingestQueue, consolidateOptions, relationshipStaleDays, semantic } = deps;
 
   // CORS for the browser frontend (app/). Allowed origins come from WEB_ORIGIN
   // (comma-separated, or "*"). In dev the Next.js app proxies same-origin so this
@@ -353,6 +370,33 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
       k,
       { scope, history },
     );
+  });
+
+  // Voice capture, step 1: store the audio (proof) + transcribe + preview the
+  // people/relationships we'd extract — nothing is persisted to memory yet.
+  app.post("/capture/transcribe", async (req, reply) => {
+    if (!transcriber.available) {
+      reply.code(503);
+      return { error: "Transcription is not configured on this server." };
+    }
+    const { audio, mimeType } = TranscribeBody.parse(req.body);
+    const artifactKey = await storeAudio(store, req.user!.id, Buffer.from(audio, "base64"), mimeType);
+    const transcript = await transcriber.transcribe(audio, mimeType);
+    const preview = transcript
+      ? await extractor.extract({ title: null, body: transcript })
+      : { entities: [], facts: [], openLoops: [], relationships: [] };
+    return { artifactKey, transcript, preview };
+  });
+
+  // Voice capture, step 2: on the user's confirm, create the voice_note episode
+  // and extract its people + relationships into the graph.
+  app.post("/capture/commit", async (req) => {
+    const { transcript, artifactKey, title } = CommitVoiceBody.parse(req.body);
+    return commitVoiceNote({ db, embedder, extractor }, req.user!.id, {
+      transcript,
+      artifactKey,
+      title,
+    });
   });
 
   // Browse the caller's episodes (newest first, paginated).
@@ -629,7 +673,10 @@ export function createServer(config: AppConfig): CreatedServer {
   const store = createArtifactStore(config);
   const redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: null });
   const queryEmbedder = createQueryEmbedder(config);
+  const embedder = createEmbedder(config);
   const generator = createGenerator(config);
+  const extractor = createExtractor(config, generator);
+  const transcriber = createTranscriber(config);
   const ingestQueue = createIngestQueue(redis);
   const deps: ServerDeps = {
     db,
@@ -637,7 +684,10 @@ export function createServer(config: AppConfig): CreatedServer {
     redis,
     config,
     queryEmbedder,
+    embedder,
     generator,
+    extractor,
+    transcriber,
     ingestQueue,
     consolidateOptions: {
       decayMaxAgeDays: config.DECAY_MAX_AGE_DAYS,

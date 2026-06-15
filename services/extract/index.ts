@@ -21,10 +21,19 @@ export interface ExtractedOpenLoop {
   direction: Direction;
   counterparty?: string | null;
 }
+/** A directed relationship between two people the note connects, e.g.
+ * { from: "Kane", to: "Sarah", relation: "realtor", detail: "Sarah's realtor" }. */
+export interface ExtractedRelationship {
+  from: string;
+  to: string;
+  relation: string;
+  detail?: string | null;
+}
 export interface ExtractionResult {
   entities: ExtractedEntity[];
   facts: ExtractedFact[];
   openLoops: ExtractedOpenLoop[];
+  relationships: ExtractedRelationship[];
 }
 
 export interface EpisodeText {
@@ -93,7 +102,8 @@ function createDevExtractor(): Extractor {
         }
       }
 
-      return { entities, facts, openLoops };
+      // The heuristic can't reliably infer inter-person relationships.
+      return { entities, facts, openLoops, relationships: [] };
     },
   };
 }
@@ -131,6 +141,16 @@ const ResultSchema = z.object({
       }),
     )
     .default([]),
+  relationships: z
+    .array(
+      z.object({
+        from: z.string().min(1),
+        to: z.string().min(1),
+        relation: z.string().min(1),
+        detail: z.string().nullish(),
+      }),
+    )
+    .default([]),
 });
 
 function buildPrompt({ title, body }: EpisodeText): string {
@@ -138,16 +158,25 @@ function buildPrompt({ title, body }: EpisodeText): string {
 {
   "entities":  [{ "name": string, "type": "person"|"place"|"org"|"project"|"topic" }],
   "facts":     [{ "subject": string, "statement": string, "predicate": string, "confidence": number 0..1 }],
-  "openLoops": [{ "description": string, "direction": "i_owe"|"they_owe", "counterparty": string|null }]
+  "openLoops": [{ "description": string, "direction": "i_owe"|"they_owe", "counterparty": string|null }],
+  "relationships": [{ "from": string, "to": string, "relation": string, "detail": string|null }]
 }
-Rules: only include items grounded in the text; "subject" must be an entity "name"; statements are concise and third-person; an open loop is a promise/commitment in either direction.
+Rules:
+- Only include items grounded in the text. "subject"/"from"/"to" must be entity "name"s.
+- Statements are concise and third-person; an open loop is a promise/commitment in either direction.
+- A relationship connects two PEOPLE the note relates. "relation" is the role of "from" to "to"
+  (e.g. realtor, sister, manager, friend, colleague, doctor). Capture every such link.
+
+Example — "Sarah is meeting Jane about the house listing, bringing Kane, her realtor":
+  entities: Sarah, Jane, Kane (person)
+  relationships: [{ "from": "Kane", "to": "Sarah", "relation": "realtor", "detail": "Sarah's realtor" }]
 
 TITLE: ${title ?? "(none)"}
 BODY:
 ${body}`;
 }
 
-function createGeminiExtractor(generator: TextGenerator): Extractor {
+function createLlmExtractor(generator: TextGenerator): Extractor {
   return {
     async extract(input) {
       const raw = await generator.generateJson<unknown>(buildPrompt(input));
@@ -166,16 +195,22 @@ function createGeminiExtractor(generator: TextGenerator): Extractor {
           direction: l.direction,
           counterparty: l.counterparty ?? null,
         })),
+        relationships: parsed.relationships.map((r) => ({
+          from: r.from,
+          to: r.to,
+          relation: r.relation,
+          detail: r.detail ?? null,
+        })),
       };
     },
   };
 }
 
+/** Use the LLM extractor whenever a real generator is configured (qwen or
+ * gemini); fall back to the offline heuristic only on the dev provider. */
 export function createExtractor(
-  config: Pick<AppConfig, "LLM_PROVIDER">,
+  _config: Pick<AppConfig, "LLM_PROVIDER">,
   generator: TextGenerator,
 ): Extractor {
-  return config.LLM_PROVIDER === "gemini"
-    ? createGeminiExtractor(generator)
-    : createDevExtractor();
+  return generator.available ? createLlmExtractor(generator) : createDevExtractor();
 }

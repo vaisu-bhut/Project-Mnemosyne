@@ -62,7 +62,11 @@ Project-Mnemosyne/
     storage/index.ts           # artifact store (local fs; S3-swappable)
     embeddings/index.ts        # embedding providers (dev/gemini/qwen)
     llm/index.ts               # LLM providers (dev heuristics / gemini)
-    extract/index.ts           # memory extraction from episodes
+    extract/index.ts           # memory extraction from episodes (entities, facts,
+                               #   open loops, + person↔person relationships); uses the
+                               #   LLM whenever a real generator is set (qwen/gemini), else heuristic
+    asr/index.ts               # speech-to-text for voice notes (Gemini audio, EMBEDDING_API_KEY)
+    capture/index.ts           # voice-note capture: store audio, commit episode + extract
     ingest/                    # connector.ts, pipeline.ts, filesystem.ts, emailText.ts,
                                #   gmail.ts, gcal.ts, gcontacts.ts (Google),
                                #   outlookMail.ts, outlookCalendar.ts, outlookContacts.ts (MS Graph)
@@ -89,7 +93,9 @@ Project-Mnemosyne/
                      #   /sources page = Accounts | Sources sub-tabs
                      #   /memory = Episodes|Facts sub-tabs; no separate Search/Episodes/Facts routes
                      #   layout: fixed-left Sidebar, only <main> scrolls (h-svh + md:pl-60)
-    src/components/  ui/ + feature dirs (auth, agents, people, sources, episodes, memory, openloops, chat)
+    src/components/  ui/ + feature dirs (auth, agents, people, sources, episodes, memory, openloops, chat, capture, pwa)
+                     #   capture/VoiceCaptureDialog — record → transcribe → review → commit
+                     #     (MediaRecorder; "Capture" button in Topbar; useCapture hooks)
                      #   /memory tabs: Episodes | Facts | Conflicts
                      #   memory/EpisodesTab + FactsTab (inline edit/stale/delete per fact +
                      #     decay/freshness indicator) + ContradictionsTab (resolve a pair → mark
@@ -135,6 +141,8 @@ Project-Mnemosyne/
   `/consolidate`,
   `/retention`, `/contradictions`, `/entities/:id/summarize`,
   `/episodes/:id/forget`, `/open-loops`, `/conduct`, `/agents/nudger/run`,
+  `/capture/transcribe` (store audio + transcribe + extraction preview) +
+  `/capture/commit` (create voice_note episode + extract into the graph),
   `/mind`, `/people/health` (incl. cadence trend), `/people/:id/brief`,
   `/graph` (people network: nodes {closeness, circle, interactions} + weighted
   co_occurs links, capped to most-connected N),
@@ -159,8 +167,9 @@ Project-Mnemosyne/
   entities, episodes (monthly-partitioned by occurred_at; PK (id, occurred_at),
   dedup key (source_id, external_id, occurred_at); default partition),
   facts (require source_episode + source_id — provenance mandatory), edges
-  (plain edge tables, graph: `mentioned_in` person→episode + `co_occurs`
-  person↔person built by consolidation), open_loops, retention, blackboard,
+  (plain edge tables, graph: `mentioned_in` person→episode, `co_occurs`
+  person↔person built by consolidation, and `relationship` person→person with
+  props {role, detail} from extraction), open_loops, retention, blackboard,
   nudge_snoozes (user_id + nudge_key → snoozed_until; source-keyed nudge
   suppression so snoozes survive the Nudger's regenerate-each-run model),
   ingest_runs (live ingestion status: status/ingested/total/items sample/error/started/finished).
@@ -180,7 +189,8 @@ Project-Mnemosyne/
   People (relationship health + a deterministic cadence trend [warming/steady/
   cooling from recent-30d vs prior-30–90d interaction rates] + cold-connection
   alerts), Briefer (per-meeting briefings: one entry per event grouping all
-  attendees), Nudger (four nudge
+  attendees; surfaces facts where the person is subject OR object, so context
+  others mentioned about them shows up), Nudger (four nudge
   types: open-loops, approaching commitments [due-dated loops, kind=commitment],
   contradictions worth resolving [kind=contradiction], relationship alerts — all
   snooze-aware via nudge_snoozes), Briefer (pre-meeting briefings), Conductor

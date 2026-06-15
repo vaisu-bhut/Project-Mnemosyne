@@ -83,11 +83,13 @@ export async function briefEntity(
     .slice(0, 3)
     .map((r) => ({ episodeId: r.id, title: r.title, occurredAt: r.occurred_at, snippet: snippet(r.body) }));
 
+  // Facts about this person — whether they're the subject OR the object, so
+  // "Raju said Sarah needs help with her car" surfaces in Sarah's briefing too.
   const facts = await db
     .selectFrom("facts")
     .select(["statement", "source_episode"])
     .where("user_id", "=", userId)
-    .where("subject_id", "=", entityId)
+    .where((eb) => eb.or([eb("subject_id", "=", entityId), eb("object_id", "=", entityId)]))
     .where("status", "=", "active")
     .orderBy("reinforced", "desc")
     .orderBy("learned_at", "desc")

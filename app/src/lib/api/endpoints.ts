@@ -8,6 +8,8 @@ import type {
   AuthUser,
   BlackboardEntry,
   Briefing,
+  CapturePreview,
+  CommitVoiceResult,
   ClassifySourceInput,
   ConsolidationReport,
   Contradiction,
@@ -137,6 +139,18 @@ export const memoryApi = {
     }),
   setRetention: ({ episodeId, ...policy }: RetentionInput) =>
     request<void>("/retention", { method: "POST", body: { episodeId, ...policy } }),
+};
+
+export const captureApi = {
+  // Step 1: upload audio (base64) → stored + transcribed + extraction preview.
+  transcribe: (audio: string, mimeType: string) =>
+    request<CapturePreview>("/capture/transcribe", {
+      method: "POST",
+      body: { audio, mimeType },
+    }),
+  // Step 2: confirm → create the voice_note episode + extract into the graph.
+  commit: (input: { transcript: string; artifactKey?: string; title?: string }) =>
+    request<CommitVoiceResult>("/capture/commit", { method: "POST", body: input }),
 };
 
 export const agentsApi = {

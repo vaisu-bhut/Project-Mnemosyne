@@ -193,6 +193,7 @@ export interface ExtractSummary {
   entities: number;
   facts: number;
   openLoops: number;
+  relationships: number;
 }
 
 /**
@@ -255,6 +256,23 @@ export async function runExtraction(
     factCount++;
   }
 
+  // Person↔person relationships the note connects (e.g. "Kane is Sarah's
+  // realtor"): a typed, directed edge from→to carrying the role + detail.
+  let relationshipCount = 0;
+  for (const r of result.relationships) {
+    if (r.from === r.to) continue;
+    const fromId = await ensureEntity(r.from);
+    const toId = await ensureEntity(r.to);
+    await insertEdge(deps.db, {
+      userId,
+      srcId: fromId,
+      dstId: toId,
+      rel: "relationship",
+      props: { role: r.relation, detail: r.detail ?? null, sourceEpisode: episode.id },
+    });
+    relationshipCount++;
+  }
+
   // Link every mentioned entity to this episode.
   for (const entityId of new Set(idByName.values())) {
     await insertEdge(deps.db, {
@@ -283,6 +301,7 @@ export async function runExtraction(
     entities: idByName.size,
     facts: factCount,
     openLoops: result.openLoops.length,
+    relationships: relationshipCount,
   };
 }
 

@@ -5,8 +5,10 @@ import { signAccessToken, signState, verifyAccessToken, verifyState } from "../a
 import { buildServer } from "../api/server.js";
 import { createDb } from "../db/index.js";
 import { createArtifactStore } from "../storage/index.js";
-import { createQueryEmbedder } from "../embeddings/index.js";
+import { createEmbedder, createQueryEmbedder } from "../embeddings/index.js";
 import { createGenerator } from "../llm/index.js";
+import { createExtractor } from "../extract/index.js";
+import { createTranscriber } from "../asr/index.js";
 import { createIngestQueue } from "../queue/index.js";
 import { Redis } from "ioredis";
 import { parseConfig } from "../config/index.js";
@@ -73,7 +75,10 @@ const app = buildServer({
   redis,
   config,
   queryEmbedder: createQueryEmbedder(config),
+  embedder: createEmbedder(config),
   generator: createGenerator(config),
+  extractor: createExtractor(config, createGenerator(config)),
+  transcriber: createTranscriber(config),
   ingestQueue: createIngestQueue(redis),
   consolidateOptions: {},
   relationshipStaleDays: 30,
