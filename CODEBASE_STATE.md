@@ -10,7 +10,8 @@ humility to cite, courage to interrupt."
 
 Two self-contained packages:
 - **`services/`** — the backend (Node.js + TypeScript, strict ESM).
-- **`app/`** — the frontend (Next.js 16 + React 19 + Tailwind 4).
+- **`app/`** — the frontend (Next.js 16 + React 19 + Tailwind 4; 3d-force-graph
+  + three.js for the People graph viz).
 
 **Backend stack:** Postgres 16 + pgvector (vectors, relational, graph edge
 tables, and monthly-partitioned episodes — pgvector only, to map cleanly onto
@@ -95,6 +96,10 @@ Project-Mnemosyne/
                      #     decay/freshness indicator) + ContradictionsTab (resolve a pair → mark
                      #     one side stale, useResolveContradiction)
                      #   people/MergePeopleDialog — merge two wrongly-split people (useMergePeople)
+                     #   people/PersonCard + BriefingView show a TrendBadge (cadence)
+                     #   /people = List | Graph; Graph = PeopleGraphPanel → PeopleGraph3D
+                     #     (3D force graph via 3d-force-graph/three.js, client-only dynamic import;
+                     #      nodes sized by closeness, colored by circle, links by co-occurrence)
                      #   sources/PermissionsEditor — static "Read-only by design" principle panel
                      #     (write/delete toggles removed; sources always sent DEFAULT_PERMISSIONS)
                      #   chat/ChatPanel + AskLauncher — right slide-over "ask your brain"
@@ -132,6 +137,8 @@ Project-Mnemosyne/
   `/retention`, `/contradictions`, `/entities/:id/summarize`,
   `/episodes/:id/forget`, `/open-loops`, `/conduct`, `/agents/nudger/run`,
   `/mind`, `/people/health` (incl. cadence trend), `/people/:id/brief`,
+  `/graph` (people network: nodes {closeness, circle, interactions} + weighted
+  co_occurs links, capped to most-connected N),
   `/briefings/upcoming` (per-meeting: each entry has attendees[]),
   `/blackboard/:id/dismiss`, `/blackboard/:id/snooze` (hide now + suppress
   regeneration until later via the entry's payload.key → nudge_snoozes).
@@ -153,7 +160,8 @@ Project-Mnemosyne/
   entities, episodes (monthly-partitioned by occurred_at; PK (id, occurred_at),
   dedup key (source_id, external_id, occurred_at); default partition),
   facts (require source_episode + source_id — provenance mandatory), edges
-  (plain edge tables, graph), open_loops, retention, blackboard,
+  (plain edge tables, graph: `mentioned_in` person→episode + `co_occurs`
+  person↔person built by consolidation), open_loops, retention, blackboard,
   nudge_snoozes (user_id + nudge_key → snoozed_until; source-keyed nudge
   suppression so snoozes survive the Nudger's regenerate-each-run model),
   ingest_runs (live ingestion status: status/ingested/total/items sample/error/started/finished).
@@ -163,7 +171,9 @@ Project-Mnemosyne/
   gcal syncs incrementally (syncToken); attendees → person entities → briefings.
 - `services/consolidate/*` — deterministic "sleep" maintenance: alias resolution,
   fact dedup+reinforcement, contradiction flagging, decay→stale, retention
-  (compress/purge/forget). Lexical by default.
+  (compress/purge/forget), then `peopleGraph.ts` `buildPeopleGraph` (materializes
+  person↔person `co_occurs` edges weighted by shared episodes + derives each
+  person's `circle` from modal source scope → entities.attrs.circle). Lexical by default.
 - `services/semantic/*` — optional `SEMANTIC_INTELLIGENCE=true` upgrades: pgvector
   candidate-gen + LLM adjudication for alias match, NLI contradiction, intent
   routing. Always falls back to lexical on LLM error.

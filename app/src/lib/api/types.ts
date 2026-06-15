@@ -343,6 +343,32 @@ export interface RelationshipAlert {
   daysSinceContact: number;
 }
 
+// --- People graph (GET /graph) ---
+
+export interface PeopleGraphNode {
+  id: string;
+  name: string;
+  closeness: number | null;
+  /** Relation context derived from source scope (work/personal/health/...). */
+  circle: string | null;
+  interactions: number;
+}
+
+export interface PeopleGraphLink {
+  source: string;
+  target: string;
+  /** Shared-episode count. */
+  weight: number;
+  lastSeen: string | null;
+}
+
+export interface PeopleGraph {
+  nodes: PeopleGraphNode[];
+  links: PeopleGraphLink[];
+  totalPeople: number;
+  truncated: boolean;
+}
+
 export interface BriefInteraction {
   episodeId: string;
   title: string | null;
@@ -403,6 +429,7 @@ export interface ConsolidationReport {
   factsStaled: number;
   episodesCompressed: number;
   episodesPurged: number;
+  peopleEdges: number;
 }
 
 /** /contradictions rows are already aliased to camelCase server-side. */

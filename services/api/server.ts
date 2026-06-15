@@ -35,6 +35,7 @@ import { resolveVisibility, type AccessContext, type Mode } from "../guardian/in
 import { decryptText } from "../auth/crypto.js";
 import {
   briefEntity,
+  peopleGraph,
   relationshipHealthAll,
   route,
   runNudger,
@@ -602,6 +603,13 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
 
   // Relationship health across the caller's people.
   app.get("/people/health", async (req) => relationshipHealthAll(db, req.user!.id));
+
+  // The people graph: person nodes (closeness + circle) and weighted co_occurs
+  // links. Capped to the most-connected people; built during consolidation.
+  app.get<{ Querystring: { limit?: string } }>("/graph", async (req) => {
+    const limit = req.query.limit ? Math.min(Math.max(Number(req.query.limit), 1), 200) : 60;
+    return peopleGraph(db, req.user!.id, { limit });
+  });
 
   // Pre-meeting briefing for a person.
   app.get<{ Params: { id: string } }>("/people/:id/brief", async (req) => {

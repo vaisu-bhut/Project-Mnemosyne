@@ -24,6 +24,7 @@ import type {
   Mode,
   NudgerResult,
   OpenLoop,
+  PeopleGraph,
   RelationshipHealth,
   RetentionInput,
   RetrieveInput,
@@ -171,6 +172,7 @@ export const peopleApi = {
       method: "POST",
       body: { survivorId, dupeId },
     }),
+  graph: (limit = 60) => request<PeopleGraph>("/graph", { query: { limit } }),
 };
 
 export const briefingsApi = {

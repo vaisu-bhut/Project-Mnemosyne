@@ -6,8 +6,10 @@ import { deduplicateFacts } from "./dedup.js";
 import { detectContradictions } from "./contradictions.js";
 import { decayFacts } from "./decay.js";
 import { enforceRetention } from "./retention.js";
+import { buildPeopleGraph } from "./peopleGraph.js";
 
 export { mergeEntities, resolveEntities } from "./entities.js";
+export { buildPeopleGraph } from "./peopleGraph.js";
 export { deduplicateFacts } from "./dedup.js";
 export { detectContradictions, listContradictions } from "./contradictions.js";
 export { decayFacts } from "./decay.js";
@@ -44,6 +46,7 @@ export interface ConsolidationReport {
   factsStaled: number;
   episodesCompressed: number;
   episodesPurged: number;
+  peopleEdges: number;
 }
 
 /**
@@ -78,6 +81,8 @@ export async function runConsolidation(
     purgeAfterDays: opts.purgeAfterDays,
     now: opts.now,
   });
+  // Rebuild the people graph last, after aliases are merged into canonical entities.
+  const { edgesBuilt } = await buildPeopleGraph(deps.db, userId);
 
   return {
     entitiesMerged: merged,
@@ -86,5 +91,6 @@ export async function runConsolidation(
     factsStaled: staled,
     episodesCompressed: compressed,
     episodesPurged: purged,
+    peopleEdges: edgesBuilt,
   };
 }

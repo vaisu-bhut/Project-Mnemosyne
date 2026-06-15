@@ -3,8 +3,13 @@ export {
   relationshipHealthAll,
   relationshipAlerts,
   recomputeCloseness,
+  peopleGraph,
   type RelationshipHealth,
   type RelationshipAlert,
+  type RelationshipTrend,
+  type PeopleGraph,
+  type PeopleGraphNode,
+  type PeopleGraphLink,
 } from "./people.js";
 export {
   briefEntity,

@@ -20,6 +20,7 @@ const REPORT_LABELS: Record<keyof ConsolidationReport, string> = {
   factsStaled: "Facts staled",
   episodesCompressed: "Episodes compressed",
   episodesPurged: "Episodes purged",
+  peopleEdges: "People links",
 };
 
 export default function SettingsPage() {

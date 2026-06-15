@@ -18,6 +18,13 @@ export function useMergePeople() {
   });
 }
 
+export function usePeopleGraph(limit = 60) {
+  return useQuery({
+    queryKey: ["people", "graph", limit],
+    queryFn: () => peopleApi.graph(limit),
+  });
+}
+
 export function usePersonBrief(id: string) {
   return useQuery({
     queryKey: ["people", "brief", id],

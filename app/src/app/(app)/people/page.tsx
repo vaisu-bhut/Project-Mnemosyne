@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { GitMerge, Users } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { usePeopleHealth } from "@/hooks/usePeople";
 import { ApiError } from "@/lib/api/client";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -10,11 +11,15 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { FullPageSpinner } from "@/components/common/Spinner";
 import { PersonCard } from "@/components/people/PersonCard";
 import { MergePeopleDialog } from "@/components/people/MergePeopleDialog";
+import { PeopleGraphPanel } from "@/components/people/PeopleGraphPanel";
 import { Button } from "@/components/ui/button";
+
+type View = "list" | "graph";
 
 export default function PeoplePage() {
   const people = usePeopleHealth();
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [view, setView] = useState<View>("list");
   const canMerge = (people.data?.length ?? 0) >= 2;
 
   return (
@@ -31,11 +36,31 @@ export default function PeoplePage() {
         )}
       </div>
 
+      <div className="mb-4 inline-flex rounded-md border bg-muted/40 p-1">
+        {(["list", "graph"] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => setView(v)}
+            className={cn(
+              "rounded px-4 py-1.5 text-sm font-medium capitalize transition-colors",
+              view === v
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+
       {people.data && (
         <MergePeopleDialog people={people.data} open={mergeOpen} onOpenChange={setMergeOpen} />
       )}
 
-      {people.isLoading ? (
+      {view === "graph" ? (
+        <PeopleGraphPanel />
+      ) : people.isLoading ? (
         <FullPageSpinner />
       ) : people.isError ? (
         <ErrorState

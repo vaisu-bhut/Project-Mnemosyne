@@ -246,6 +246,104 @@ export async function recomputeCloseness(
   return { updated: res.rows.length };
 }
 
+export interface PeopleGraphNode {
+  id: string;
+  name: string;
+  closeness: number | null;
+  /** Relation context derived from source scope (work/personal/health/...). */
+  circle: string | null;
+  interactions: number;
+}
+export interface PeopleGraphLink {
+  source: string;
+  target: string;
+  /** Number of shared episodes (co-occurrence count). */
+  weight: number;
+  lastSeen: string | null;
+}
+export interface PeopleGraph {
+  nodes: PeopleGraphNode[];
+  links: PeopleGraphLink[];
+  /** Total people before the node cap (so the UI can say "showing N of M"). */
+  totalPeople: number;
+  truncated: boolean;
+}
+
+interface GraphNodeRow {
+  id: string;
+  name: string;
+  closeness: number | null;
+  circle: string | null;
+  interactions: number;
+}
+interface GraphLinkRow {
+  source: string;
+  target: string;
+  weight: number;
+  last_seen: string | null;
+}
+
+/**
+ * The whole people network: person nodes (closeness, circle, interaction count)
+ * + `co_occurs` links (weighted by shared episodes). Capped to the most-connected
+ * `limit` people for legibility; links are kept only between included nodes.
+ */
+export async function peopleGraph(
+  db: Db,
+  userId: string,
+  opts: { limit?: number } = {},
+): Promise<PeopleGraph> {
+  const limit = opts.limit ?? 60;
+
+  const total = await db
+    .selectFrom("entities")
+    .select(({ fn }) => fn.countAll<number>().as("n"))
+    .where("user_id", "=", userId)
+    .where("type", "=", "person")
+    .executeTakeFirst();
+  const totalPeople = Number(total?.n ?? 0);
+
+  const nodeRows = await sql<GraphNodeRow>`
+    SELECT en.id, en.canonical_name AS name, en.closeness,
+           en.attrs->>'circle' AS circle,
+           COUNT(DISTINCT e.dst_id)::int AS interactions
+    FROM entities en
+    LEFT JOIN edges e ON e.src_id = en.id AND e.rel = 'mentioned_in' AND e.user_id = ${userId}
+    WHERE en.user_id = ${userId} AND en.type = 'person'
+    GROUP BY en.id, en.canonical_name, en.closeness, en.attrs->>'circle'
+    ORDER BY en.closeness DESC NULLS LAST, interactions DESC
+    LIMIT ${limit}
+  `.execute(db);
+
+  const nodes: PeopleGraphNode[] = nodeRows.rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    closeness: r.closeness,
+    circle: r.circle,
+    interactions: Number(r.interactions),
+  }));
+  const nodeIds = new Set(nodes.map((n) => n.id));
+
+  const linkRows = await sql<GraphLinkRow>`
+    SELECT src_id AS source, dst_id AS target,
+           (props->>'count')::int AS weight,
+           props->>'lastSeen' AS last_seen
+    FROM edges
+    WHERE user_id = ${userId} AND rel = 'co_occurs' AND src_id < dst_id
+  `.execute(db);
+
+  const links: PeopleGraphLink[] = linkRows.rows
+    .filter((l) => nodeIds.has(l.source) && nodeIds.has(l.target))
+    .map((l) => ({
+      source: l.source,
+      target: l.target,
+      weight: Number(l.weight),
+      lastSeen: l.last_seen,
+    }));
+
+  return { nodes, links, totalPeople, truncated: totalPeople > nodes.length };
+}
+
 /** Convenience: open loops the user owes (for surfacing). */
 export async function listOwedThreads(db: Db, userId: string) {
   const loops = await listOpenLoops(db, userId, "open");
