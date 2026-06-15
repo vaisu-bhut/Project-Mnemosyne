@@ -91,7 +91,8 @@ Project-Mnemosyne/
                      #   layout: fixed-left Sidebar, only <main> scrolls (h-svh + md:pl-60)
     src/components/  ui/ + feature dirs (auth, agents, people, sources, episodes, memory, openloops, chat)
                      #   memory/EpisodesTab + FactsTab (FactsTab: inline edit/stale/delete per fact)
-                     #   sources/PermissionsEditor — per-app read/write/delete + mode (write/delete inert)
+                     #   sources/PermissionsEditor — static "Read-only by design" principle panel
+                     #     (write/delete toggles removed; sources always sent DEFAULT_PERMISSIONS)
                      #   chat/ChatPanel + AskLauncher — right slide-over "ask your brain"
                      #     (launcher is app-wide: rendered once in ChatPanelProvider; pages call
                      #      useRegisterChatContext() to scope it; scoped retrieval via /ask)

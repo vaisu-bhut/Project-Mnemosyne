@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useCreateSource } from "@/hooks/useSources";
 import { useAccounts } from "@/hooks/useAccounts";
-import { DEFAULT_PERMISSIONS, type CreateSourceInput, type SourceKind, type SourcePermissions } from "@/lib/api/types";
+import { DEFAULT_PERMISSIONS, type CreateSourceInput, type SourceKind } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
 import { KIND_META, SCOPE_OPTIONS } from "./kindMeta";
 import { PermissionsEditor } from "./PermissionsEditor";
@@ -39,7 +39,6 @@ export function CreateSourceDialog({
   const [scope, setScope] = useState<string>("personal");
   const [sensitive, setSensitive] = useState(false);
   const [accountId, setAccountId] = useState<string>("");
-  const [permissions, setPermissions] = useState<SourcePermissions>(DEFAULT_PERMISSIONS);
   const create = useCreateSource();
   const accounts = useAccounts();
 
@@ -59,7 +58,6 @@ export function CreateSourceDialog({
     setScope("personal");
     setSensitive(false);
     setAccountId("");
-    setPermissions(DEFAULT_PERMISSIONS);
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -78,7 +76,7 @@ export function CreateSourceDialog({
       displayName: name,
       scope,
       sensitive,
-      permissions,
+      permissions: DEFAULT_PERMISSIONS,
       config: kind === "filesystem" ? { dir: dir.trim() } : {},
       ...(meta.oauth && accountId ? { oauthAccountId: accountId } : {}),
     };
@@ -203,7 +201,7 @@ export function CreateSourceDialog({
             </label>
           </div>
 
-          <PermissionsEditor value={permissions} onChange={setPermissions} />
+          <PermissionsEditor />
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

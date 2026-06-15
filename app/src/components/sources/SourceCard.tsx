@@ -87,14 +87,7 @@ export function SourceCard({
         )}
       </div>
 
-      {source.permissions && (
-        <p className="text-xs text-muted-foreground">
-          Read ✓ · Write {source.permissions.write ? "on" : "off"} · Delete{" "}
-          {source.permissions.delete ? "on" : "off"}
-          {(source.permissions.write || source.permissions.delete) &&
-            ` · ${source.permissions.mode}`}
-        </p>
-      )}
+      <p className="text-xs text-muted-foreground">Read-only · never writes to your account</p>
 
       {/* Live ingestion feed: a rolling sample of what's being pulled in. */}
       {active && run && (run.items.length > 0 || run.status === "error") && (

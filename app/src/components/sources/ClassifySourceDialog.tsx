@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useClassifySource } from "@/hooks/useSources";
-import { DEFAULT_PERMISSIONS, type Source, type SourcePermissions } from "@/lib/api/types";
+import { DEFAULT_PERMISSIONS, type Source } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
 import { SCOPE_OPTIONS } from "./kindMeta";
 import { PermissionsEditor } from "./PermissionsEditor";
@@ -47,9 +47,6 @@ export function ClassifySourceDialog({
 function ClassifyForm({ source, onDone }: { source: Source; onDone: () => void }) {
   const [scope, setScope] = useState(source.scope);
   const [sensitive, setSensitive] = useState(source.sensitive);
-  const [permissions, setPermissions] = useState<SourcePermissions>(
-    source.permissions ?? DEFAULT_PERMISSIONS,
-  );
   const classify = useClassifySource();
 
   const scopeOptions = SCOPE_OPTIONS.includes(scope as (typeof SCOPE_OPTIONS)[number])
@@ -59,7 +56,10 @@ function ClassifyForm({ source, onDone }: { source: Source; onDone: () => void }
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await classify.mutateAsync({ id: source.id, input: { scope, sensitive, permissions } });
+      await classify.mutateAsync({
+        id: source.id,
+        input: { scope, sensitive, permissions: DEFAULT_PERMISSIONS },
+      });
       toast.success("Connector settings updated");
       onDone();
     } catch (err) {
@@ -100,7 +100,7 @@ function ClassifyForm({ source, onDone }: { source: Source; onDone: () => void }
           />
           Sensitive (encrypted at rest; hidden in guest mode)
         </label>
-        <PermissionsEditor value={permissions} onChange={setPermissions} />
+        <PermissionsEditor />
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onDone}>
             Cancel

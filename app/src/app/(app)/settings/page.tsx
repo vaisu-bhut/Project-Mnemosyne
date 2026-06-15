@@ -1,7 +1,7 @@
 "use client";
 
 import { toast } from "sonner";
-import { CheckCircle2, GitMerge, ShieldAlert, XCircle } from "lucide-react";
+import { CheckCircle2, GitMerge, ShieldAlert, ShieldCheck, XCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { useConsolidate, useContradictions, useHealth } from "@/hooks/useAdmin";
 import { ApiError } from "@/lib/api/client";
@@ -41,6 +41,21 @@ export default function SettingsPage() {
       <PageHeader title="Settings" description="Maintenance, data health, and your account." />
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* Read-only principle */}
+        <Card className="lg:col-span-2 border-primary/30 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ShieldCheck className="size-4 text-primary" /> Read-only by design
+            </CardTitle>
+            <CardDescription>
+              Mnemosyne reads your connected accounts to build memory and{" "}
+              <strong className="text-foreground">never writes, sends, edits, or deletes</strong>{" "}
+              anything in them. This is a deliberate trust constraint, not a missing feature — your
+              memory can be wrong without any risk to your real inbox, calendar, or contacts.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+
         {/* System status */}
         <Card>
           <CardHeader>

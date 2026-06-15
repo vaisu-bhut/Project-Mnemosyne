@@ -283,9 +283,12 @@ curl -X POST localhost:3000/ask -H "authorization: Bearer <t>" `
   -H "content-type: application/json" -d '{"question":"...","mode":"guest"}'
 ```
 
-Contradiction links are advisory (never auto-retract); likewise the Guardian
-currently gates *reads* — action-level vetoes arrive with the Drafter, and
-entity-level masking + the consent layer (third-party data) are the next steps.
+Contradiction links are advisory (never auto-retract). **Mnemosyne is read-only
+by design**: it ingests your accounts to build memory and never writes, sends,
+edits, or deletes anything in them. That is a deliberate trust constraint, not a
+missing feature — your memory can be wrong without any risk to your real inbox,
+calendar, or contacts. The Guardian therefore gates *reads*; entity-level masking
+and the consent layer for third-party data are the next steps.
 
 ## Useful scripts
 
