@@ -128,7 +128,8 @@ describe("Briefer — time-triggered (calendar)", () => {
 
     const briefings = await upcomingBriefings({ db, generator }, userId, { withinHours: 24, post: true });
     expect(briefings).toHaveLength(1);
-    expect(briefings[0]!.briefing.name).toBe("Sara Lin");
+    expect(briefings[0]!.attendees).toHaveLength(1);
+    expect(briefings[0]!.attendees[0]!.name).toBe("Sara Lin");
 
     const mind = await listMind(db, userId, 10);
     expect(mind.some((m) => m.kind === "briefing" && m.title.includes("1:1 with Sara"))).toBe(true);

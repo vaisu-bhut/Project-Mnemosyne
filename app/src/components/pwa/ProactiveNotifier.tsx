@@ -115,9 +115,15 @@ export function ProactiveNotifier() {
       if (lead > BRIEFING_LEAD_MS || lead < -BRIEFING_GRACE_MS) continue; // not in the window yet
       seen.add(key);
       changed = true;
-      const name = b.briefing.name;
-      void notify(`Briefing ready: ${b.eventTitle ?? name}`, {
-        body: name ? `Meeting with ${name} starting soon — your briefing is ready.` : undefined,
+      const names = b.attendees.map((a) => a.name);
+      const who =
+        names.length === 0
+          ? null
+          : names.length <= 2
+            ? names.join(" & ")
+            : `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+      void notify(`Briefing ready: ${b.eventTitle ?? who ?? "upcoming meeting"}`, {
+        body: who ? `Meeting with ${who} starting soon — your briefing is ready.` : undefined,
         tag: key,
         url: "/briefings",
       });

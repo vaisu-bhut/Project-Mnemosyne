@@ -5,6 +5,7 @@ import { User } from "lucide-react";
 import type { RelationshipHealth } from "@/lib/api/types";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TrendBadge } from "@/components/people/TrendBadge";
 import { pct } from "@/lib/format";
 
 export function PersonCard({
@@ -36,12 +37,16 @@ export function PersonCard({
             </p>
           </div>
         </div>
-        <div className="mt-auto flex flex-wrap items-center gap-1.5">
+        <div className="mt-auto flex flex-wrap items-center gap-2">
           {person.closeness !== null && (
             <Badge variant="secondary" title="closeness">
               {pct(person.closeness)} close
             </Badge>
           )}
+          <TrendBadge
+            trend={person.trend}
+            title={`${person.recentInteractions} in last 30d vs ${person.priorInteractions} in the prior 2 months`}
+          />
           {cold && <Badge variant="warning">going cold</Badge>}
         </div>
       </Card>

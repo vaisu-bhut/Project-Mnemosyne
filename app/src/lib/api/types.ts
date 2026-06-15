@@ -321,6 +321,9 @@ export interface OpenThread {
   direction: string;
 }
 
+/** Contact cadence (used-to-talk vs. now). */
+export type RelationshipTrend = "warming" | "steady" | "cooling";
+
 export interface RelationshipHealth {
   entityId: string;
   name: string;
@@ -328,6 +331,9 @@ export interface RelationshipHealth {
   interactions: number;
   lastContactAt: string | null;
   daysSinceContact: number | null;
+  trend: RelationshipTrend;
+  recentInteractions: number;
+  priorInteractions: number;
   openThreads: OpenThread[];
 }
 
@@ -358,6 +364,7 @@ export interface Briefing {
   lastContactAt: string | null;
   daysSinceContact: number | null;
   interactions: number;
+  trend: RelationshipTrend;
   recentInteractions: BriefInteraction[];
   openThreads: OpenThread[];
   recentFacts: BriefFact[];
@@ -368,7 +375,7 @@ export interface UpcomingBriefing {
   eventId: string;
   eventTitle: string | null;
   eventStart: string;
-  briefing: Briefing;
+  attendees: Briefing[];
 }
 
 export interface NudgerResult {

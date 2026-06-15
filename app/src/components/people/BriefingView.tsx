@@ -5,6 +5,7 @@ import { CircleHelp, Clock, MessageSquare, NotebookPen } from "lucide-react";
 import type { Briefing } from "@/lib/api/types";
 import { useEpisodeDrawer } from "@/components/episodes/EpisodeDrawerProvider";
 import { Citation } from "@/components/Citation";
+import { TrendBadge } from "@/components/people/TrendBadge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate, pct } from "@/lib/format";
@@ -39,6 +40,7 @@ export function BriefingView({ briefing }: { briefing: Briefing }) {
           {briefing.closeness !== null && (
             <Badge variant="secondary">{pct(briefing.closeness)} close</Badge>
           )}
+          <TrendBadge trend={briefing.trend} />
         </div>
         {briefing.aliases.length > 0 && (
           <p className="text-xs text-muted-foreground">aka {briefing.aliases.join(", ")}</p>

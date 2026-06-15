@@ -2,7 +2,7 @@ import { sql } from "kysely";
 import { clearAgentEntries, writeBlackboard, type Db } from "../db/index.js";
 import type { TextGenerator } from "../llm/index.js";
 import { decryptText } from "../auth/crypto.js";
-import { relationshipHealth, type OpenThread } from "./people.js";
+import { relationshipHealth, type OpenThread, type RelationshipTrend } from "./people.js";
 
 export interface BrieferDeps {
   db: Db;
@@ -32,6 +32,8 @@ export interface Briefing {
   lastContactAt: Date | null;
   daysSinceContact: number | null;
   interactions: number;
+  /** Contact cadence (used-to-talk vs. now). */
+  trend: RelationshipTrend;
   recentInteractions: BriefInteraction[];
   openThreads: OpenThread[];
   recentFacts: BriefFact[];
@@ -121,6 +123,7 @@ export async function briefEntity(
     lastContactAt: health.lastContactAt,
     daysSinceContact: health.daysSinceContact,
     interactions: health.interactions,
+    trend: health.trend,
     recentInteractions,
     openThreads: health.openThreads,
     recentFacts,
@@ -132,15 +135,16 @@ export interface UpcomingBriefing {
   eventId: string;
   eventTitle: string | null;
   eventStart: Date;
-  briefing: Briefing;
+  /** One briefing per attendee who resolves to a person — the whole meeting. */
+  attendees: Briefing[];
 }
 
 /**
- * Time-triggered pre-meeting briefings. Finds upcoming `calendar_event`
- * episodes within `withinHours`, and for each attendee (a linked person)
- * assembles a briefing. With `post`, writes each to the blackboard as a salient
- * "briefing" entry that expires when the meeting starts — the dossier's
- * auto-generated pre-meeting brief.
+ * Time-triggered pre-meeting briefings, framed per meeting. Finds upcoming
+ * `calendar_event` episodes within `withinHours`, and for each assembles a
+ * briefing for every attendee who resolves to a person. With `post`, writes one
+ * salient "briefing" entry per meeting (all attendees together) that expires
+ * when the meeting starts — the dossier's auto-generated pre-meeting brief.
  */
 export async function upcomingBriefings(
   deps: BrieferDeps,
@@ -164,7 +168,7 @@ export async function upcomingBriefings(
 
   const out: UpcomingBriefing[] = [];
   for (const ev of events) {
-    const attendees = await deps.db
+    const people = await deps.db
       .selectFrom("edges")
       .innerJoin("entities", "entities.id", "edges.src_id")
       .select(["entities.id as id", "entities.canonical_name as name"])
@@ -174,22 +178,38 @@ export async function upcomingBriefings(
       .where("entities.type", "=", "person")
       .execute();
 
-    for (const a of attendees) {
-      const briefing = await briefEntity(deps, userId, a.id, now);
-      out.push({ eventId: ev.id, eventTitle: ev.title, eventStart: ev.occurred_at, briefing });
-      if (opts.post) {
-        await writeBlackboard(deps.db, {
-          userId,
-          kind: "briefing",
-          agent: "briefer",
-          title: `Prep for "${ev.title}" with ${a.name}`,
-          body: briefing.suggestedQuestions.map((q) => `• ${q}`).join("\n"),
-          entityId: a.id,
-          salience: 0.85,
-          payload: { eventId: ev.id, eventTitle: ev.title, eventStart: ev.occurred_at },
-          expiresAt: ev.occurred_at,
-        });
-      }
+    if (people.length === 0) continue; // a meeting with no known attendees has nothing to brief
+
+    const attendees: Briefing[] = [];
+    for (const p of people) {
+      attendees.push(await briefEntity(deps, userId, p.id, now));
+    }
+    out.push({ eventId: ev.id, eventTitle: ev.title, eventStart: ev.occurred_at, attendees });
+
+    if (opts.post) {
+      const names = attendees.map((a) => a.name);
+      const who = names.length <= 2 ? names.join(" & ") : `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+      // Lead with each attendee's top suggested question.
+      const body = attendees
+        .map((a) => `${a.name}: ${a.suggestedQuestions[0] ?? "What's new?"}`)
+        .join("\n");
+      await writeBlackboard(deps.db, {
+        userId,
+        kind: "briefing",
+        agent: "briefer",
+        title: `Prep for "${ev.title}" with ${who}`,
+        body,
+        // Link to the single attendee when there's only one; ambiguous otherwise.
+        entityId: attendees.length === 1 ? attendees[0]!.entityId : null,
+        salience: 0.85,
+        payload: {
+          eventId: ev.id,
+          eventTitle: ev.title,
+          eventStart: ev.occurred_at,
+          attendeeIds: attendees.map((a) => a.entityId),
+        },
+        expiresAt: ev.occurred_at,
+      });
     }
   }
   return out;

@@ -58,7 +58,7 @@ export default function BriefingsPage() {
       ) : briefings.data && briefings.data.length > 0 ? (
         <div className="space-y-6">
           {briefings.data.map((b) => (
-            <Card key={`${b.eventId}-${b.briefing.entityId}`}>
+            <Card key={b.eventId}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <CalendarClock className="size-4" />
@@ -66,10 +66,18 @@ export default function BriefingsPage() {
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
                   {new Date(b.eventStart).toLocaleString()}
+                  {b.attendees.length > 1 && ` · ${b.attendees.length} attendees`}
                 </p>
               </CardHeader>
-              <CardContent>
-                <BriefingView briefing={b.briefing} />
+              <CardContent className="space-y-6">
+                {b.attendees.map((attendee, i) => (
+                  <div
+                    key={attendee.entityId}
+                    className={i > 0 ? "border-t pt-6" : undefined}
+                  >
+                    <BriefingView briefing={attendee} />
+                  </div>
+                ))}
               </CardContent>
             </Card>
           ))}

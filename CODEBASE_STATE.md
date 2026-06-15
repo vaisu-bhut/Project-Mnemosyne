@@ -131,7 +131,8 @@ Project-Mnemosyne/
   Guardian-gated), `/consolidate`,
   `/retention`, `/contradictions`, `/entities/:id/summarize`,
   `/episodes/:id/forget`, `/open-loops`, `/conduct`, `/agents/nudger/run`,
-  `/mind`, `/people/health`, `/people/:id/brief`, `/briefings/upcoming`,
+  `/mind`, `/people/health` (incl. cadence trend), `/people/:id/brief`,
+  `/briefings/upcoming` (per-meeting: each entry has attendees[]),
   `/blackboard/:id/dismiss`, `/blackboard/:id/snooze` (hide now + suppress
   regeneration until later via the entry's payload.key → nudge_snoozes).
 - `services/worker/index.ts` — 5 BullMQ workers: ingest → (enqueues) extract,
@@ -167,7 +168,10 @@ Project-Mnemosyne/
   candidate-gen + LLM adjudication for alias match, NLI contradiction, intent
   routing. Always falls back to lexical on LLM error.
 - `services/agents/*` — agent mesh writing to shared blackboard (no direct calls):
-  People (relationship health + cold-connection alerts), Nudger (four nudge
+  People (relationship health + a deterministic cadence trend [warming/steady/
+  cooling from recent-30d vs prior-30–90d interaction rates] + cold-connection
+  alerts), Briefer (per-meeting briefings: one entry per event grouping all
+  attendees), Nudger (four nudge
   types: open-loops, approaching commitments [due-dated loops, kind=commitment],
   contradictions worth resolving [kind=contradiction], relationship alerts — all
   snooze-aware via nudge_snoozes), Briefer (pre-meeting briefings), Conductor

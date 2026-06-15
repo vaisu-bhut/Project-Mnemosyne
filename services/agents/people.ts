@@ -8,6 +8,14 @@ import {
 
 const DAY_MS = 86_400_000;
 
+/** Contact cadence over time: are you talking more, the same, or less than you
+ * used to? Computed from interaction frequency, recent window vs. prior window. */
+export type RelationshipTrend = "warming" | "steady" | "cooling";
+
+// Windows for the cadence comparison: last 30 days vs. the 30–90-day baseline.
+const RECENT_DAYS = 30;
+const PRIOR_DAYS = 90;
+
 export interface OpenThread {
   id: string;
   description: string;
@@ -21,6 +29,12 @@ export interface RelationshipHealth {
   interactions: number;
   lastContactAt: Date | null;
   daysSinceContact: number | null;
+  /** Cadence trend (used-to-talk vs. now). */
+  trend: RelationshipTrend;
+  /** Interactions in the recent window (last RECENT_DAYS). */
+  recentInteractions: number;
+  /** Interactions in the prior baseline window (RECENT_DAYS–PRIOR_DAYS ago). */
+  priorInteractions: number;
   openThreads: OpenThread[];
 }
 
@@ -30,11 +44,28 @@ interface HealthRow {
   closeness: number | null;
   interactions: number;
   last_contact: Date | null;
+  recent: number;
+  prior: number;
 }
 
 function daysSince(date: Date | null, now: Date): number | null {
   if (!date) return null;
   return Math.floor((now.getTime() - date.getTime()) / DAY_MS);
+}
+
+/**
+ * Classify cadence by comparing per-day interaction rates in the recent window
+ * against the prior baseline. Rates (not raw counts) so the different window
+ * lengths compare fairly. Needs a little signal before calling it a trend.
+ */
+function classifyTrend(recent: number, prior: number): RelationshipTrend {
+  const recentRate = recent / RECENT_DAYS;
+  const priorRate = prior / (PRIOR_DAYS - RECENT_DAYS);
+  if (recent === 0 && prior === 0) return "steady";
+  if (priorRate === 0) return recent >= 2 ? "warming" : "steady";
+  if (recentRate >= priorRate * 1.5) return "warming";
+  if (recentRate <= priorRate * 0.6) return "cooling";
+  return "steady";
 }
 
 /** Relationship health for one of a user's people. */
@@ -51,13 +82,26 @@ export async function relationshipHealth(
     .where("user_id", "=", userId)
     .executeTakeFirstOrThrow();
 
-  const contact = await sql<{ interactions: number; last_contact: Date | null }>`
-    SELECT COUNT(DISTINCT ep.id)::int AS interactions, MAX(ep.occurred_at) AS last_contact
+  const contact = await sql<{
+    interactions: number;
+    last_contact: Date | null;
+    recent: number;
+    prior: number;
+  }>`
+    SELECT COUNT(DISTINCT ep.id)::int AS interactions,
+           MAX(ep.occurred_at) AS last_contact,
+           COUNT(DISTINCT ep.id) FILTER (
+             WHERE ep.occurred_at > ${now}::timestamptz - (${RECENT_DAYS} || ' days')::interval
+           )::int AS recent,
+           COUNT(DISTINCT ep.id) FILTER (
+             WHERE ep.occurred_at <= ${now}::timestamptz - (${RECENT_DAYS} || ' days')::interval
+               AND ep.occurred_at > ${now}::timestamptz - (${PRIOR_DAYS} || ' days')::interval
+           )::int AS prior
     FROM edges e
     JOIN episodes ep ON ep.id = e.dst_id
     WHERE e.user_id = ${userId} AND e.src_id = ${entityId} AND e.rel = 'mentioned_in'
   `.execute(db);
-  const row = contact.rows[0] ?? { interactions: 0, last_contact: null };
+  const row = contact.rows[0] ?? { interactions: 0, last_contact: null, recent: 0, prior: 0 };
 
   const loops = await db
     .selectFrom("open_loops")
@@ -67,6 +111,8 @@ export async function relationshipHealth(
     .where("status", "=", "open")
     .execute();
 
+  const recent = Number(row.recent);
+  const prior = Number(row.prior);
   return {
     entityId: entity.id,
     name: entity.canonical_name,
@@ -74,6 +120,9 @@ export async function relationshipHealth(
     interactions: Number(row.interactions),
     lastContactAt: row.last_contact,
     daysSinceContact: daysSince(row.last_contact, now),
+    trend: classifyTrend(recent, prior),
+    recentInteractions: recent,
+    priorInteractions: prior,
     openThreads: loops.map((l) => ({ id: l.id, description: l.description, direction: l.direction })),
   };
 }
@@ -87,7 +136,14 @@ export async function relationshipHealthAll(
   const rows = await sql<HealthRow>`
     SELECT en.id, en.canonical_name, en.closeness,
            COUNT(DISTINCT ep.id)::int AS interactions,
-           MAX(ep.occurred_at) AS last_contact
+           MAX(ep.occurred_at) AS last_contact,
+           COUNT(DISTINCT ep.id) FILTER (
+             WHERE ep.occurred_at > ${now}::timestamptz - (${RECENT_DAYS} || ' days')::interval
+           )::int AS recent,
+           COUNT(DISTINCT ep.id) FILTER (
+             WHERE ep.occurred_at <= ${now}::timestamptz - (${RECENT_DAYS} || ' days')::interval
+               AND ep.occurred_at > ${now}::timestamptz - (${PRIOR_DAYS} || ' days')::interval
+           )::int AS prior
     FROM entities en
     LEFT JOIN edges e ON e.src_id = en.id AND e.rel = 'mentioned_in' AND e.user_id = ${userId}
     LEFT JOIN episodes ep ON ep.id = e.dst_id
@@ -96,15 +152,22 @@ export async function relationshipHealthAll(
     ORDER BY last_contact DESC NULLS LAST
   `.execute(db);
 
-  return rows.rows.map((r) => ({
-    entityId: r.id,
-    name: r.canonical_name,
-    closeness: r.closeness,
-    interactions: Number(r.interactions),
-    lastContactAt: r.last_contact,
-    daysSinceContact: daysSince(r.last_contact, now),
-    openThreads: [],
-  }));
+  return rows.rows.map((r) => {
+    const recent = Number(r.recent);
+    const prior = Number(r.prior);
+    return {
+      entityId: r.id,
+      name: r.canonical_name,
+      closeness: r.closeness,
+      interactions: Number(r.interactions),
+      lastContactAt: r.last_contact,
+      daysSinceContact: daysSince(r.last_contact, now),
+      trend: classifyTrend(recent, prior),
+      recentInteractions: recent,
+      priorInteractions: prior,
+      openThreads: [],
+    };
+  });
 }
 
 export interface RelationshipAlert {
