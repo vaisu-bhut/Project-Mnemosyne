@@ -18,6 +18,15 @@ export function useDismissMind() {
   });
 }
 
+export function useSnoozeMind() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, hours }: { id: string; hours?: number }) =>
+      agentsApi.snooze(id, hours),
+    onSuccess: () => qc.invalidateQueries({ queryKey: mindKeys.all }),
+  });
+}
+
 export function useRunNudger() {
   const qc = useQueryClient();
   return useMutation({

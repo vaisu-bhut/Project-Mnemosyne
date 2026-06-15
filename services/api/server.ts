@@ -12,6 +12,8 @@ import {
   deleteFact,
   deleteOauthAccount,
   dismissBlackboard,
+  getBlackboard,
+  snoozeNudge,
   getLatestIngestRun,
   getEpisode,
   getOauthAccountById,
@@ -159,6 +161,10 @@ const AskBody = z.object({
   ...ModeField,
 });
 const ConductBody = z.object({ query: z.string().min(1), ...ModeField });
+const SnoozeBody = z.object({
+  // How long to suppress the nudge. Default one day; capped at ~30 days.
+  hours: z.number().positive().max(720).optional().default(24),
+});
 const RetentionBody = z.object({
   episodeId: z.string().uuid(),
   tier: z.enum(["raw_forever", "standard", "ephemeral"]).optional(),
@@ -571,6 +577,23 @@ export function buildServer(deps: ServerDeps): FastifyInstance {
   app.post<{ Params: { id: string } }>("/blackboard/:id/dismiss", async (req, reply) => {
     await dismissBlackboard(db, req.user!.id, req.params.id);
     reply.code(204);
+  });
+
+  // Snooze a nudge: hide it now and suppress its regeneration until later. The
+  // snooze is keyed to the nudge's source (payload.key) so the Nudger won't
+  // re-post it on its next run; entries without a source key just dismiss.
+  app.post<{ Params: { id: string } }>("/blackboard/:id/snooze", async (req, reply) => {
+    const { hours } = SnoozeBody.parse(req.body ?? {});
+    const entry = await getBlackboard(db, req.user!.id, req.params.id);
+    if (!entry) {
+      reply.code(404);
+      return { error: "entry not found" };
+    }
+    const key = (entry.payload as { key?: string } | null)?.key;
+    const until = new Date(Date.now() + hours * 3_600_000);
+    if (key) await snoozeNudge(db, req.user!.id, key, until);
+    await dismissBlackboard(db, req.user!.id, req.params.id);
+    return { snoozedUntil: key ? until.toISOString() : null };
   });
 
   // Surface validation errors as 400s; preserve other Fastify status codes.

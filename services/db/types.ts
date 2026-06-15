@@ -167,6 +167,12 @@ export interface BlackboardTable {
   expires_at: NullableDate;
 }
 
+export interface NudgeSnoozesTable {
+  user_id: string;
+  nudge_key: string;
+  snoozed_until: Date;
+}
+
 export type IngestRunStatus = "queued" | "running" | "done" | "error";
 
 /** A compact sample of a recently-ingested item (stored in ingest_runs.items). */
@@ -202,5 +208,6 @@ export interface Database {
   open_loops: OpenLoopsTable;
   retention: RetentionTable;
   blackboard: BlackboardTable;
+  nudge_snoozes: NudgeSnoozesTable;
   ingest_runs: IngestRunsTable;
 }

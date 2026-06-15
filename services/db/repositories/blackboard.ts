@@ -58,6 +58,20 @@ export async function listMind(
     .execute();
 }
 
+/** Fetch one blackboard entry by id (scoped to its owner). */
+export async function getBlackboard(
+  db: Db,
+  userId: string,
+  id: string,
+): Promise<BlackboardEntry | undefined> {
+  return db
+    .selectFrom("blackboard")
+    .selectAll()
+    .where("id", "=", id)
+    .where("user_id", "=", userId)
+    .executeTakeFirst();
+}
+
 /** Dismiss an entry (scoped to its owner). */
 export async function dismissBlackboard(
   db: Db,

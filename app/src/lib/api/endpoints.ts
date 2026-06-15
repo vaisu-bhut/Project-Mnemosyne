@@ -152,6 +152,11 @@ export const agentsApi = {
     camelize<BlackboardEntry[]>(await request("/mind", { query: { k } })),
   dismiss: (id: string) =>
     request<void>(`/blackboard/${id}/dismiss`, { method: "POST", body: {} }),
+  snooze: (id: string, hours = 24) =>
+    request<{ snoozedUntil: string | null }>(`/blackboard/${id}/snooze`, {
+      method: "POST",
+      body: { hours },
+    }),
   runNudger: () => request<NudgerResult>("/agents/nudger/run", { method: "POST", body: {} }),
   conduct: (query: string, opts: { mode?: Mode; includeSensitive?: boolean } = {}) =>
     request<RouteResult>("/conduct", { method: "POST", body: { query, ...opts } }),

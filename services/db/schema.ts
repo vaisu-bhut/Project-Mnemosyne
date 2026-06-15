@@ -23,6 +23,7 @@ export function buildSchemaSql(vectorDim: number): string {
   return `
 -- Drop existing objects so this is a clean, idempotent reset.
 DROP TABLE IF EXISTS ingest_runs CASCADE;
+DROP TABLE IF EXISTS nudge_snoozes CASCADE;
 DROP TABLE IF EXISTS blackboard CASCADE;
 DROP TABLE IF EXISTS retention CASCADE;
 DROP TABLE IF EXISTS open_loops CASCADE;
@@ -262,6 +263,17 @@ CREATE TABLE blackboard (
 );
 CREATE INDEX blackboard_salience_idx ON blackboard (user_id, status, salience DESC);
 CREATE INDEX blackboard_entity_idx ON blackboard (entity_id);
+
+-- nudge_snoozes: "remind me later" for proactive nudges. The Nudger regenerates
+-- blackboard entries from source each run, so a snooze must be keyed to the
+-- underlying thing (a loop, a relationship, a contradiction pair) rather than a
+-- blackboard row id — the Nudger skips any key snoozed into the future.
+CREATE TABLE nudge_snoozes (
+  user_id       uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  nudge_key     text NOT NULL,
+  snoozed_until timestamptz NOT NULL,
+  PRIMARY KEY (user_id, nudge_key)
+);
 
 -- ingest_runs: live status of an ingestion job for a source, so the UI can show
 -- real progress (counts + a sample of recently-ingested item titles) instead of

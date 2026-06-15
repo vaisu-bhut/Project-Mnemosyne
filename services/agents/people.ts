@@ -121,10 +121,11 @@ export interface RelationshipAlert {
 export async function relationshipAlerts(
   db: Db,
   userId: string,
-  opts: { staleDays?: number; now?: Date; post?: boolean } = {},
+  opts: { staleDays?: number; now?: Date; post?: boolean; snoozedKeys?: Set<string> } = {},
 ): Promise<RelationshipAlert[]> {
   const staleDays = opts.staleDays ?? 30;
   const now = opts.now ?? new Date();
+  const snoozed = opts.snoozedKeys ?? new Set<string>();
 
   const health = await relationshipHealthAll(db, userId, now);
   const alerts = health
@@ -135,6 +136,8 @@ export async function relationshipAlerts(
   if (opts.post) {
     await clearAgentEntries(db, userId, "people");
     for (const a of alerts) {
+      const key = `people:${a.entityId}`;
+      if (snoozed.has(key)) continue;
       await writeBlackboard(db, {
         userId,
         kind: "alert",
@@ -142,7 +145,7 @@ export async function relationshipAlerts(
         title: `You haven't connected with ${a.name} in ${a.daysSinceContact} days`,
         entityId: a.entityId,
         salience: Math.min(0.9, 0.5 + a.daysSinceContact / 365),
-        payload: { daysSinceContact: a.daysSinceContact },
+        payload: { key, daysSinceContact: a.daysSinceContact },
       });
     }
   }

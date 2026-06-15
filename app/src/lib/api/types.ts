@@ -366,6 +366,8 @@ export interface UpcomingBriefing {
 
 export interface NudgerResult {
   openLoopNudges: number;
+  commitmentNudges: number;
+  contradictionNudges: number;
   relationshipAlerts: number;
   total: number;
 }

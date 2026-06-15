@@ -124,7 +124,8 @@ Project-Mnemosyne/
   `/retention`, `/contradictions`, `/entities/:id/summarize`,
   `/episodes/:id/forget`, `/open-loops`, `/conduct`, `/agents/nudger/run`,
   `/mind`, `/people/health`, `/people/:id/brief`, `/briefings/upcoming`,
-  `/blackboard/:id/dismiss`.
+  `/blackboard/:id/dismiss`, `/blackboard/:id/snooze` (hide now + suppress
+  regeneration until later via the entry's payload.key → nudge_snoozes).
 - `services/worker/index.ts` — 5 BullMQ workers: ingest → (enqueues) extract,
   consolidate, nudge, healthcheck. The ingest worker updates the job's
   `ingest_runs` row (running → progress sample → done/error) via `runIngest`'s
@@ -143,8 +144,10 @@ Project-Mnemosyne/
   entities, episodes (monthly-partitioned by occurred_at; PK (id, occurred_at),
   dedup key (source_id, external_id, occurred_at); default partition),
   facts (require source_episode + source_id — provenance mandatory), edges
-  (plain edge tables, graph), open_loops, retention, blackboard, ingest_runs
-  (live ingestion status: status/ingested/total/items sample/error/started/finished).
+  (plain edge tables, graph), open_loops, retention, blackboard,
+  nudge_snoozes (user_id + nudge_key → snoozed_until; source-keyed nudge
+  suppression so snoozes survive the Nudger's regenerate-each-run model),
+  ingest_runs (live ingestion status: status/ingested/total/items sample/error/started/finished).
 - `services/ingest/pipeline.ts` + connectors — pull source content into episodes;
   Gmail connector is incremental + people-aware (History API cursor, person
   entities from senders/recipients, HTML→text cleaning, attachments to store).
@@ -156,8 +159,11 @@ Project-Mnemosyne/
   candidate-gen + LLM adjudication for alias match, NLI contradiction, intent
   routing. Always falls back to lexical on LLM error.
 - `services/agents/*` — agent mesh writing to shared blackboard (no direct calls):
-  People (relationship health), Nudger (salient alerts), Briefer (pre-meeting
-  briefings), Conductor (routes query by intent → agent or recall fallback).
+  People (relationship health + cold-connection alerts), Nudger (four nudge
+  types: open-loops, approaching commitments [due-dated loops, kind=commitment],
+  contradictions worth resolving [kind=contradiction], relationship alerts — all
+  snooze-aware via nudge_snoozes), Briefer (pre-meeting briefings), Conductor
+  (routes query by intent → agent or recall fallback).
 - `services/guardian/index.ts` — privacy compartments enforced at retrieval:
   modes guest / work / external / default; gates facts, episodes, entities;
   sensitive tier encrypted at rest (AES-256-GCM).

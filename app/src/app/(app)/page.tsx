@@ -24,7 +24,9 @@ export default function DashboardPage() {
       onSuccess: (r) =>
         toast.success(
           `Nudger surfaced ${r.total} item${r.total === 1 ? "" : "s"}`,
-          { description: `${r.openLoopNudges} open loops · ${r.relationshipAlerts} relationship alerts` },
+          {
+            description: `${r.openLoopNudges} open loops · ${r.commitmentNudges} commitments · ${r.contradictionNudges} contradictions · ${r.relationshipAlerts} relationship alerts`,
+          },
         ),
       onError: (err) => toast.error(err instanceof ApiError ? err.message : "Nudger failed"),
     });
