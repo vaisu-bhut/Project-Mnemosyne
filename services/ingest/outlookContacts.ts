@@ -3,7 +3,24 @@ import { fetchWithRetry } from "../util/http.js";
 
 const GRAPH_CONTACTS = "https://graph.microsoft.com/v1.0/me/contacts";
 const SELECT =
-  "id,displayName,emailAddresses,mobilePhone,homePhones,businessPhones,companyName,jobTitle,lastModifiedDateTime";
+  "id,displayName,emailAddresses,mobilePhone,homePhones,businessPhones,companyName,jobTitle,birthday,lastModifiedDateTime";
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** A Graph birthday (ISO datetime, or null) as "March 4" / "March 4, 1990".
+ * Graph uses a placeholder year (e.g. 1604) when the year is unknown. */
+function formatBirthday(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return null;
+  const d = new Date(iso);
+  const md = `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  const year = d.getUTCFullYear();
+  return year > 1900 ? `${md}, ${year}` : md;
+}
 
 export interface OutlookContactsConnectorOptions {
   accessToken: string;
@@ -20,6 +37,7 @@ interface GraphContact {
   businessPhones?: string[];
   companyName?: string;
   jobTitle?: string;
+  birthday?: string | null;
   lastModifiedDateTime?: string;
 }
 
@@ -39,11 +57,13 @@ function toRawItem(c: GraphContact): RawItem | null {
   const phone = firstPhone(c)?.trim();
   if (!name && !email && !phone) return null;
 
+  const birthday = formatBirthday(c.birthday);
   const bodyLines = [
     name && `Name: ${name}`,
     email && `Email: ${email}`,
     phone && `Phone: ${phone}`,
     c.companyName && `Org: ${c.companyName}${c.jobTitle ? ` (${c.jobTitle})` : ""}`,
+    birthday && `Birthday: ${birthday}`,
   ].filter(Boolean);
 
   return {
@@ -63,6 +83,7 @@ function toRawItem(c: GraphContact): RawItem | null {
         attrs: {
           ...(c.companyName ? { org: c.companyName } : {}),
           ...(c.jobTitle ? { title: c.jobTitle } : {}),
+          ...(birthday ? { birthday } : {}),
         },
       },
     ],

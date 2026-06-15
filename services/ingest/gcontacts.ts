@@ -2,7 +2,24 @@ import type { Connector, PullResult, RawItem } from "./connector.js";
 import { fetchWithRetry } from "../util/http.js";
 
 const PEOPLE_API = "https://people.googleapis.com/v1/people/me/connections";
-const FIELDS = "names,emailAddresses,phoneNumbers,organizations,metadata";
+const FIELDS =
+  "names,emailAddresses,phoneNumbers,organizations,birthdays,metadata";
+
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** A People API birthday as a human-readable string ("March 4" or "March 4, 1990"),
+ * preferring the structured date and falling back to free text. */
+function formatBirthday(b: { date?: { year?: number; month?: number; day?: number }; text?: string }): string | null {
+  const d = b.date;
+  if (d?.month && d.day) {
+    const md = `${MONTHS[d.month - 1]} ${d.day}`;
+    return d.year ? `${md}, ${d.year}` : md;
+  }
+  return b.text?.trim() || null;
+}
 
 export interface ContactsConnectorOptions {
   accessToken: string;
@@ -16,6 +33,7 @@ interface Person {
   emailAddresses?: { value?: string }[];
   phoneNumbers?: { value?: string }[];
   organizations?: { name?: string; title?: string }[];
+  birthdays?: { date?: { year?: number; month?: number; day?: number }; text?: string }[];
   metadata?: { sources?: { updateTime?: string }[] };
 }
 
@@ -32,11 +50,13 @@ function toRawItem(p: Person): RawItem | null {
   if (!name && !email && !phone) return null;
 
   const org = p.organizations?.[0];
+  const birthday = p.birthdays?.map(formatBirthday).find(Boolean) ?? null;
   const bodyLines = [
     name && `Name: ${name}`,
     email && `Email: ${email}`,
     phone && `Phone: ${phone}`,
     org?.name && `Org: ${org.name}${org.title ? ` (${org.title})` : ""}`,
+    birthday && `Birthday: ${birthday}`,
   ].filter(Boolean);
 
   return {
@@ -56,6 +76,7 @@ function toRawItem(p: Person): RawItem | null {
         attrs: {
           ...(org?.name ? { org: org.name } : {}),
           ...(org?.title ? { title: org.title } : {}),
+          ...(birthday ? { birthday } : {}),
         },
       },
     ],
