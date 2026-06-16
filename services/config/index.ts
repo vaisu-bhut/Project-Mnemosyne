@@ -50,11 +50,13 @@ const EnvSchema = z.object({
   // Qwen (DashScope OpenAI-compatible). Key is separate from the Gemini key.
   QWEN_API_KEY: z.string().optional(),
   QWEN_MODEL: z.string().default("qwen-plus"),
-  // ASR (speech-to-text) model — Qwen-audio via chat/completions with an
-  // input_audio content part. DashScope intl does not expose audio/transcriptions
-  // (Whisper-style); chat-completions with audio input is the supported path.
-  // Other valid values: qwen2-audio-instruct, qwen3-omni-flash.
-  QWEN_ASR_MODEL: z.string().default("qwen-audio-turbo-latest"),
+  // ASR (speech-to-text) — Qwen-audio via DashScope's native multimodal
+  // generation endpoint. Both must be set in .env; no hardcoded defaults so
+  // operators control which model + URL their tenant uses.
+  //   QWEN_ASR_MODEL     e.g. qwen-audio-turbo-latest
+  //   QWEN_AUDIO_BASE_URL e.g. https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
+  QWEN_ASR_MODEL: z.string().optional(),
+  QWEN_AUDIO_BASE_URL: z.string().url().optional(),
   QWEN_BASE_URL: z
     .string()
     .url()
