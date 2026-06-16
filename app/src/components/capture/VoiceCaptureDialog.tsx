@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Mic, Square, Users, Link2 } from "lucide-react";
 import { useTranscribe, useCommitVoiceNote } from "@/hooks/useCapture";
 import { ApiError } from "@/lib/api/client";
-import { blobToBase64, pickAudioMime } from "@/lib/audio";
+import { blobToBase64, getMicStream, pickAudioMime } from "@/lib/audio";
 import type { CapturePreview } from "@/lib/api/types";
 import {
   Dialog,
@@ -54,7 +54,7 @@ export function VoiceCaptureDialog({
 
   async function startRecording() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await getMicStream();
       const mime = pickAudioMime();
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       chunksRef.current = [];
@@ -67,8 +67,8 @@ export function VoiceCaptureDialog({
       recorderRef.current = rec;
       rec.start();
       setStage("recording");
-    } catch {
-      toast.error("Couldn't access the microphone. Check browser permissions.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't access the microphone.");
     }
   }
 

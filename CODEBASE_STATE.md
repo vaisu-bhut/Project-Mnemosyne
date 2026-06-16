@@ -65,7 +65,9 @@ Project-Mnemosyne/
     extract/index.ts           # memory extraction from episodes (entities, facts,
                                #   open loops, + person↔person relationships); uses the
                                #   LLM whenever a real generator is set (qwen/gemini), else heuristic
-    asr/index.ts               # speech-to-text for voice notes (Gemini audio, EMBEDDING_API_KEY)
+    asr/index.ts               # speech-to-text for voice notes + voice-driven Ask
+                               #   (Qwen via DashScope OpenAI-compatible /audio/transcriptions,
+                               #    QWEN_API_KEY + QWEN_ASR_MODEL; embeddings stay on Gemini)
     capture/index.ts           # voice-note capture: store audio, commit episode + extract
     ingest/                    # connector.ts, pipeline.ts, filesystem.ts, emailText.ts,
                                #   gmail.ts, gcal.ts, gcontacts.ts (Google),

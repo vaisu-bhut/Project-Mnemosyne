@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Mic, Square } from "lucide-react";
 import { useTranscribeText } from "@/hooks/useCapture";
 import { ApiError } from "@/lib/api/client";
-import { blobToBase64, pickAudioMime } from "@/lib/audio";
+import { blobToBase64, getMicStream, pickAudioMime } from "@/lib/audio";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/common/Spinner";
 import { cn } from "@/lib/utils";
@@ -29,7 +29,7 @@ export function MicButton({
 
   async function start() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await getMicStream();
       const mime = pickAudioMime();
       const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
       chunksRef.current = [];
@@ -41,8 +41,8 @@ export function MicButton({
       recorderRef.current = rec;
       rec.start();
       setRecording(true);
-    } catch {
-      toast.error("Couldn't access the microphone. Check browser permissions.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't access the microphone.");
     }
   }
 
