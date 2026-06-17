@@ -1,4 +1,5 @@
 import type { AppConfig } from "../config/index.js";
+import OpenAI from "openai";
 
 /**
  * Minimal text-generation interface used by extraction and grounded answering.
@@ -6,7 +7,7 @@ import type { AppConfig } from "../config/index.js";
  */
 export interface TextGenerator {
   readonly available: boolean;
-  generateText(prompt: string): Promise<string>;
+  generateText(prompt: string, options?: { enableThinking?: boolean }): Promise<string>;
   generateJson<T>(prompt: string): Promise<T>;
 }
 
@@ -67,7 +68,7 @@ function createGeminiGenerator(config: LlmConfig): TextGenerator {
 
   return {
     available: true,
-    generateText: (prompt) => call(prompt, false),
+    generateText: (prompt, options) => call(prompt, false),
     async generateJson<T>(prompt: string): Promise<T> {
       const raw = await call(prompt, true);
       return JSON.parse(stripFences(raw)) as T;
@@ -85,36 +86,72 @@ function createQwenGenerator(config: LlmConfig): TextGenerator {
     throw new Error("LLM_PROVIDER=qwen requires QWEN_API_KEY");
   }
   const model = config.QWEN_MODEL;
-  const url = `${config.QWEN_BASE_URL.replace(/\/$/, "")}/chat/completions`;
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${apiKey}`,
-  };
+  const openai = new OpenAI({
+    apiKey,
+    baseURL: config.QWEN_BASE_URL,
+  });
 
-  async function call(prompt: string, json: boolean): Promise<string> {
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
+  async function call(prompt: string, json: boolean, enableThinkingOverride?: boolean): Promise<string> {
+    const isThinkingModel = model.toLowerCase().includes("qwen3.7");
+    const enableThinking = isThinkingModel && !json && enableThinkingOverride !== false;
+
+    if (enableThinking) {
+      // Stream thinking/reasoning process to stdout, then return full response.
+      try {
+        const stream = await openai.chat.completions.create({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          stream: true,
+          ...({ enable_thinking: true } as any),
+        }) as any;
+
+        console.log('\n' + '='.repeat(20) + 'Thinking process' + '='.repeat(20));
+        let isAnswering = false;
+        let fullContent = "";
+
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta as any;
+          if (!delta) continue;
+
+          if (delta.reasoning_content !== undefined && delta.reasoning_content !== null) {
+            if (!isAnswering) {
+              process.stdout.write(delta.reasoning_content);
+            }
+          }
+          if (delta.content !== undefined && delta.content) {
+            if (!isAnswering) {
+              console.log('\n' + '='.repeat(20) + 'Full response' + '='.repeat(20));
+              isAnswering = true;
+            }
+            process.stdout.write(delta.content);
+            fullContent += delta.content;
+          }
+        }
+        console.log(); // Ensure new line after completion
+        return fullContent;
+      } catch (err: any) {
+        console.error("Qwen LLM streaming reasoning failed:", err);
+        throw new Error(`LLM request failed: ${err.message || err}`);
+      }
+    }
+
+    // Standard non-thinking or JSON call
+    try {
+      const response = await openai.chat.completions.create({
         model,
         messages: [{ role: "user", content: prompt }],
         temperature: 0,
         ...(json ? { response_format: { type: "json_object" } } : {}),
-      }),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(`LLM request failed (${res.status}): ${detail}`);
+      });
+      return response.choices[0]?.message?.content ?? "";
+    } catch (err: any) {
+      throw new Error(`LLM request failed: ${err.message || err}`);
     }
-    const data = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    return data.choices?.[0]?.message?.content ?? "";
   }
 
   return {
     available: true,
-    generateText: (prompt) => call(prompt, false),
+    generateText: (prompt, options) => call(prompt, false, options?.enableThinking),
     async generateJson<T>(prompt: string): Promise<T> {
       const raw = await call(prompt, true);
       return JSON.parse(stripFences(raw)) as T;
@@ -129,7 +166,7 @@ function createQwenGenerator(config: LlmConfig): TextGenerator {
 function createDevGenerator(): TextGenerator {
   return {
     available: false,
-    async generateText() {
+    async generateText(prompt, options) {
       return "[dev generator: set LLM_PROVIDER=qwen for real answers]";
     },
     async generateJson<T>(): Promise<T> {

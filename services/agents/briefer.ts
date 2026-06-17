@@ -220,6 +220,7 @@ async function suggestQuestions(
       .join("\n");
     const raw = await deps.generator.generateText(
       `You're prepping me to see ${name}. From this context, suggest 3 short, specific questions I could ask them. One per line, no numbering.\n\n${context || "(little is known)"}`,
+      { enableThinking: false },
     );
     const qs = raw
       .split("\n")

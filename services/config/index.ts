@@ -15,9 +15,16 @@ const envBool = z
   .union([z.boolean(), z.string()])
   .transform((v) => (typeof v === "boolean" ? v : v.toLowerCase() === "true"));
 
+/** Convert empty or whitespace-only string to undefined so optional url schema passes. */
+const optionalUrl = () =>
+  z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().url().optional(),
+  );
+
 const EnvSchema = z.object({
   DATABASE_URL: z.string().url(),
-  TEST_DATABASE_URL: z.string().url().optional(),
+  TEST_DATABASE_URL: optionalUrl(),
 
   VECTOR_DIM: z.coerce.number().int().positive().default(DEFAULT_VECTOR_DIM),
 
@@ -34,7 +41,7 @@ const EnvSchema = z.object({
   EMBEDDING_PROVIDER: z.enum(["dev", "gemini", "qwen"]).default("dev"),
   EMBEDDING_MODEL: z.string().default("gemini-embedding-001"),
   // Optional override; each provider has a sensible default base URL.
-  EMBEDDING_BASE_URL: z.string().url().optional(),
+  EMBEDDING_BASE_URL: optionalUrl(),
   EMBEDDING_API_KEY: z.string().optional(),
   // Gemini task type hint (RETRIEVAL_DOCUMENT for stored memory,
   // RETRIEVAL_QUERY for search queries). Improves retrieval quality.
@@ -49,6 +56,7 @@ const EnvSchema = z.object({
   LLM_MODEL: z.string().default("gemini-2.5-flash"),
   // Qwen (DashScope OpenAI-compatible). Key is separate from the Gemini key.
   QWEN_API_KEY: z.string().optional(),
+  DASHSCOPE_API_KEY: z.string().optional(),
   QWEN_MODEL: z.string().default("qwen-plus"),
   // ASR (speech-to-text) — Qwen-audio via DashScope's native multimodal
   // generation endpoint. Both must be set in .env; no hardcoded defaults so
@@ -56,7 +64,7 @@ const EnvSchema = z.object({
   //   QWEN_ASR_MODEL     e.g. qwen-audio-turbo-latest
   //   QWEN_AUDIO_BASE_URL e.g. https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
   QWEN_ASR_MODEL: z.string().optional(),
-  QWEN_AUDIO_BASE_URL: z.string().url().optional(),
+  QWEN_AUDIO_BASE_URL: optionalUrl(),
   QWEN_BASE_URL: z
     .string()
     .url()
@@ -152,7 +160,13 @@ export type AppConfig = Readonly<z.infer<typeof EnvSchema>>;
  * Throws a readable error if a required variable is missing or malformed.
  */
 export function parseConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
-  const result = EnvSchema.safeParse(env);
+  const apiKey = env.DASHSCOPE_API_KEY || env.QWEN_API_KEY;
+  const processedEnv = {
+    ...env,
+    QWEN_API_KEY: env.QWEN_API_KEY || apiKey,
+    DASHSCOPE_API_KEY: env.DASHSCOPE_API_KEY || apiKey,
+  };
+  const result = EnvSchema.safeParse(processedEnv);
   if (!result.success) {
     const issues = result.error.issues
       .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
