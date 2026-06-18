@@ -9,7 +9,10 @@ export function Spinner({ className }: { className?: string }) {
 export function FullPageSpinner() {
   return (
     <div className="flex min-h-svh items-center justify-center">
-      <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      <div className="relative">
+        <div className="absolute inset-0 rounded-full bg-primary/20 blur-xl animate-subtle-pulse" />
+        <Loader2 className="relative size-7 animate-spin text-primary" />
+      </div>
     </div>
   );
 }

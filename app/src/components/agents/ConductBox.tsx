@@ -45,27 +45,41 @@ export function ConductBox() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Wand2 className="size-4" /> Ask your conductor
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <form onSubmit={onSubmit} className="flex flex-col gap-2 sm:flex-row">
-          <Input
-            placeholder="e.g. brief me on Sara · what's on my mind · who have I lost touch with"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <Button type="submit" disabled={conduct.isPending || !query.trim()}>
-            {conduct.isPending ? <Spinner /> : <Sparkles />}
-            Conduct
-          </Button>
-        </form>
-        {conduct.data && <ConductResult data={conduct.data} />}
-      </CardContent>
-    </Card>
+    <div className="relative">
+      {/* Wide ambient bloom behind the card — depth without a hard shadow. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -inset-x-8 -top-6 -bottom-6 rounded-[2rem] bg-[var(--glow)] blur-3xl opacity-70"
+      />
+      <Card className="relative border-primary/25 bg-card/85 shadow-[0_0_32px_-8px_var(--glow-strong),inset_0_1px_0_oklch(1_0_0_/_6%)] backdrop-blur-xl">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2.5 text-[15px] font-medium">
+            <span className="flex size-7 items-center justify-center rounded-lg bg-primary/15 ring-1 ring-primary/20">
+              <Wand2 className="size-3.5 text-primary" />
+            </span>
+            Ask your conductor
+            <span className="ml-auto text-[11px] font-normal uppercase tracking-[0.16em] text-muted-foreground/70">
+              ⏎ to route
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <form onSubmit={onSubmit} className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              placeholder="e.g. brief me on Sara · what's on my mind · who have I lost touch with"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-11 text-[15px]"
+            />
+            <Button type="submit" disabled={conduct.isPending || !query.trim()} className="h-11 px-5">
+              {conduct.isPending ? <Spinner /> : <Sparkles />}
+              Conduct
+            </Button>
+          </form>
+          {conduct.data && <ConductResult data={conduct.data} />}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 

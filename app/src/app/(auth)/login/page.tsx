@@ -57,11 +57,16 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="items-center text-center">
-          <Brain className="size-7 text-primary" />
-          <CardTitle className="text-xl">Welcome back</CardTitle>
+    <main className="flex min-h-svh items-center justify-center bg-background p-4 relative overflow-hidden">
+      {/* Subtle ambient background glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/5 rounded-full blur-[100px] pointer-events-none" />
+      
+      <Card className="w-full max-w-sm relative z-10 glass-strong border-border/40 shadow-2xl animate-fade-in">
+        <CardHeader className="items-center text-center pb-8">
+          <div className="rounded-2xl bg-primary/10 p-3 mb-2 animate-glow-pulse">
+            <Brain className="size-8 text-primary" />
+          </div>
+          <CardTitle className="text-2xl font-semibold tracking-tight">Welcome back</CardTitle>
           <CardDescription>Sign in to your Mnemosyne memory.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -94,10 +99,10 @@ export default function LoginPage() {
               Sign in
             </Button>
           </form>
-          <div className="my-4 flex items-center gap-3">
-            <span className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted-foreground">or</span>
-            <span className="h-px flex-1 bg-border" />
+          <div className="my-6 flex items-center gap-3">
+            <span className="h-px flex-1 bg-border/40" />
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">or</span>
+            <span className="h-px flex-1 bg-border/40" />
           </div>
           <GoogleSignInButton />
           <p className="mt-4 text-center text-sm text-muted-foreground">

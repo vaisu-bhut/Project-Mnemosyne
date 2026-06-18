@@ -1,32 +1,47 @@
 "use client";
 
-import { useState } from "react";
-import { LogOut, Mic } from "lucide-react";
-import { useAuth } from "@/lib/auth/AuthProvider";
-import { Button } from "@/components/ui/button";
-import { VoiceCaptureDialog } from "@/components/capture/VoiceCaptureDialog";
+import { useMemo } from "react";
+import { usePathname } from "next/navigation";
 
+const PAGE_LABELS: Array<[match: RegExp | string, label: string]> = [
+  [/^\/people\/[^/]+$/, "People · Profile"],
+  ["/memory", "Memory"],
+  ["/sources", "Connections"],
+  ["/people", "People"],
+  ["/briefings", "Briefings"],
+  ["/open-loops", "Open Loops"],
+  ["/settings", "Settings"],
+  ["/", "Dashboard"],
+];
+
+function labelFor(pathname: string): string {
+  for (const [m, label] of PAGE_LABELS) {
+    if (typeof m === "string" ? pathname === m || pathname.startsWith(`${m}/`) : m.test(pathname)) {
+      return label;
+    }
+  }
+  return "Dashboard";
+}
+
+/**
+ * Quiet context strip. The Capture action has moved into the sidebar (where the
+ * primary verb belongs); identity lives in the sidebar too. The topbar's only
+ * job now is to name the current page — small caps with a kicker dot — and
+ * carry the hairline that separates chrome from content.
+ */
 export function Topbar() {
-  const { user, logout } = useAuth();
-  const [captureOpen, setCaptureOpen] = useState(false);
+  const pathname = usePathname();
+  const page = useMemo(() => labelFor(pathname), [pathname]);
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 md:px-6">
-      <span className="font-semibold tracking-tight md:hidden">Mnemosyne</span>
-      <VoiceCaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
-      <div className="ml-auto flex items-center gap-4">
-        <Button size="sm" onClick={() => setCaptureOpen(true)}>
-          <Mic className="size-4" /> Capture
-        </Button>
-        <div className="flex items-center gap-2">
-          <span className="hidden max-w-[12rem] truncate text-sm text-muted-foreground sm:inline">
-            {user?.displayName ?? user?.email}
-          </span>
-          <Button variant="ghost" size="icon" onClick={() => void logout()} title="Sign out">
-            <LogOut />
-          </Button>
-        </div>
+    <header className="sticky top-0 z-20 bg-background/85 backdrop-blur-sm">
+      <div className="flex h-10 items-center px-5 md:px-7">
+        <p className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+          <span aria-hidden className="size-1.5 rounded-full bg-[var(--ochre)]" />
+          {page}
+        </p>
       </div>
+      <div aria-hidden className="h-px w-full bg-border" />
     </header>
   );
 }

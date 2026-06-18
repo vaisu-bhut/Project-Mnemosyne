@@ -23,7 +23,7 @@ export function Citation({
       onClick={() => open(episodeId)}
       title={`Open source episode ${episodeId}`}
       className={cn(
-        "inline-flex items-center gap-1 rounded border bg-muted px-1.5 py-0.5 align-middle text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
+        "hover-bloom inline-flex items-center gap-1 rounded border bg-card px-1.5 py-0.5 align-middle text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-accent hover:text-foreground",
         className,
       )}
     >

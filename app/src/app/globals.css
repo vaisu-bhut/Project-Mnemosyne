@@ -2,52 +2,78 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* shadcn-style design tokens (neutral palette), Tailwind v4. */
+/*
+ * Mnemosyne design system — "Cream Paper" (editorial, light-first).
+ *
+ * Warm cream paper background with deep ink text. Editorial serif headings,
+ * subdued indigo accent (the "PHASE 1" purple in the reference). Surfaces are
+ * filled (not translucent). A faint ochre grid texture sits behind everything
+ * to read as paper, not screen.
+ */
+
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --radius: 0.5rem;
+
+  /* Warm cream paper backgrounds — three tight luminance steps. */
+  --background: oklch(0.935 0.022 88);
+  --foreground: oklch(0.22 0.025 70);
+
+  --sidebar: oklch(0.955 0.018 88);
+  --sidebar-foreground: oklch(0.25 0.025 70);
+
+  --card: oklch(0.965 0.014 88);
+  --card-foreground: oklch(0.22 0.025 70);
+
+  --popover: oklch(0.97 0.012 88);
+  --popover-foreground: oklch(0.22 0.025 70);
+
+  /* Primary — subdued ink-purple (the editorial "PHASE 1" tone). */
+  --primary: oklch(0.46 0.14 290);
+  --primary-foreground: oklch(0.99 0.005 290);
+
+  /* Secondary — quiet warm chip surface. */
+  --secondary: oklch(0.90 0.02 88);
+  --secondary-foreground: oklch(0.28 0.025 70);
+
+  /* Muted — same-family soft surface. */
+  --muted: oklch(0.90 0.02 88);
+  --muted-foreground: oklch(0.45 0.025 70);
+
+  /* Accent — warm hover step over the cream base. */
+  --accent: oklch(0.88 0.026 85);
+  --accent-foreground: oklch(0.25 0.025 70);
+
+  /* Destructive — warm brick red, more editorial than coral. */
+  --destructive: oklch(0.52 0.20 30);
+  --destructive-foreground: oklch(0.99 0.008 30);
+
+  --border: oklch(0 0 0 / 10%);
+  --input: oklch(0 0 0 / 13%);
+  --ring: oklch(0.46 0.14 290 / 35%);
+
+  /* Glow — subtle purple bloom (used sparingly, e.g. ask launcher). */
+  --glow: oklch(0.46 0.14 290 / 10%);
+  --glow-strong: oklch(0.46 0.14 290 / 18%);
+
+  /* Editorial ochre — the yellow accent bar between sidebar and content. */
+  --ochre: oklch(0.78 0.13 82);
+
+  /* Paper grain — subtle dot grid, never visible up close but felt. */
+  --grain: oklch(0 0 0 / 4%);
+
+  /* Warm ink-tinted shadow base (NOT cool gray) — gives cards a "paper on
+   * paper" depth instead of a screen drop-shadow. */
+  --shadow-ink: 0.30 0.03 70;
+
+  /* Editorial easing — slow start, gentle settle. Used for hovers, rise-ins,
+   * any motion that should feel like ink absorbing into paper. */
+  --ease-ink: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-}
+/* Legacy .dark class kept as a no-op so any leftover utility doesn't blow up. */
+.dark { /* no-op; the product is light-mode editorial */ }
 
+/* ── Tailwind v4 theme bridge ─────────────────────────────────────── */
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -56,6 +82,8 @@
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -73,11 +101,17 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-glow: var(--glow);
+  --color-glow-strong: var(--glow-strong);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
+  --font-serif: var(--font-serif);
+
+  --color-ochre: var(--ochre);
 }
 
+/* ── Base layer ───────────────────────────────────────────────────── */
 @layer base {
   * {
     border-color: var(--color-border);
@@ -85,5 +119,284 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+  }
+
+  /* Slim scrollbar tuned for the dark slate base. */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(1 0 0 / 10%);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(1 0 0 / 18%);
+  }
+}
+
+/* ── Keyframe animations ──────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 8px var(--glow), 0 0 24px var(--glow); }
+  50%      { box-shadow: 0 0 12px var(--glow-strong), 0 0 36px var(--glow-strong); }
+}
+
+@keyframes subtlePulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.7; }
+}
+
+/* Slow ambient drift for the aurora background — distant, never distracting. */
+@keyframes auroraDrift {
+  0%   { transform: translate3d(0%, 0%, 0) scale(1); }
+  50%  { transform: translate3d(2%, -1.5%, 0) scale(1.05); }
+  100% { transform: translate3d(0%, 0%, 0) scale(1); }
+}
+
+/* Gentle rise used by hero text + page header. */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(10px); filter: blur(4px); }
+  to   { opacity: 1; transform: translateY(0);    filter: blur(0); }
+}
+
+/* Slow shimmer across a text gradient — the welcome moment. */
+@keyframes shimmer {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+/* Ink-settle bloom — used by interactive chips (citations, badges) on hover.
+ * A momentary "wet ink" lift, then settles slightly elevated. */
+@keyframes inkBloom {
+  0%   { transform: scale(1); }
+  55%  { transform: scale(1.06); }
+  100% { transform: scale(1.03); }
+}
+
+/* Editorial underline that draws in left-to-right. Pair with a span that has
+ * a `--mask` background; the keyframe expands the visible width. */
+@keyframes underlineIn {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+/* Active sidebar dot — pops in with a subtle settle. */
+@keyframes dotIn {
+  0%   { opacity: 0; transform: translateY(-50%) scale(0.4); }
+  60%  { opacity: 1; transform: translateY(-50%) scale(1.15); }
+  100% { opacity: 1; transform: translateY(-50%) scale(1); }
+}
+
+/* ── Utility classes ──────────────────────────────────────────────── */
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.35s ease-out both;
+  }
+
+  .animate-glow-pulse {
+    animation: glowPulse 3s ease-in-out infinite;
+  }
+
+  .animate-subtle-pulse {
+    animation: subtlePulse 2s ease-in-out infinite;
+  }
+
+  /* Glassmorphism surface */
+  .glass {
+    background: var(--background);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .glass-strong {
+    background: var(--card);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+
+  /* Glow effects */
+  .glow-sm {
+    box-shadow: 0 0 8px var(--glow), 0 0 2px var(--glow);
+  }
+  .glow-md {
+    box-shadow: 0 0 16px var(--glow), 0 0 4px var(--glow);
+  }
+
+  /* ── Shadows (warm, ink-tinted) ────────────────────────────────── */
+  /* Calm at-rest elevation for cards. */
+  .shadow-soft {
+    box-shadow:
+      0 1px 2px oklch(var(--shadow-ink) / 5%),
+      0 4px 12px -4px oklch(var(--shadow-ink) / 7%);
+  }
+
+  /* Lifted state — what cards rise into on hover. */
+  .shadow-lifted {
+    box-shadow:
+      0 2px 4px oklch(var(--shadow-ink) / 7%),
+      0 8px 22px -6px oklch(var(--shadow-ink) / 11%),
+      0 18px 36px -14px oklch(var(--shadow-ink) / 8%);
+  }
+
+  /* Deep ink — for floating chrome (Ask launcher pill, modals). */
+  .shadow-ink-deep {
+    box-shadow:
+      0 1px 2px oklch(var(--shadow-ink) / 8%),
+      0 6px 18px -4px oklch(var(--shadow-ink) / 14%),
+      0 22px 48px -12px oklch(var(--shadow-ink) / 14%);
+  }
+
+  /* ── Interactions ──────────────────────────────────────────────── */
+
+  /* Card hover lift — warm shadow, refined ease, settles in place. */
+  .card-hover {
+    transition: transform 0.22s var(--ease-ink),
+                box-shadow 0.22s var(--ease-ink),
+                border-color 0.22s var(--ease-ink);
+  }
+  .card-hover:hover {
+    transform: translateY(-1px);
+    box-shadow:
+      0 1px 2px oklch(var(--shadow-ink) / 5%),
+      0 8px 22px -6px oklch(var(--shadow-ink) / 12%),
+      0 18px 36px -14px oklch(var(--shadow-ink) / 10%);
+    border-color: oklch(0 0 0 / 14%);
+  }
+
+  /* Button press — subtle scale-in on active. Use alongside variant styles. */
+  .btn-press {
+    transition: transform 0.12s var(--ease-ink),
+                box-shadow 0.18s var(--ease-ink),
+                background-color 0.16s ease-out,
+                color 0.16s ease-out;
+  }
+  .btn-press:active {
+    transform: scale(0.97);
+  }
+
+  /* Hover ink-bloom — citation chips and badges that should feel like real ink. */
+  .hover-bloom {
+    transition: transform 0.2s var(--ease-ink);
+    transform-origin: center;
+  }
+  .hover-bloom:hover {
+    animation: inkBloom 0.32s var(--ease-ink) forwards;
+  }
+
+  /* Underline-draws-in on hover — pair with a relative parent. */
+  .hover-underline {
+    position: relative;
+    display: inline-block;
+  }
+  .hover-underline::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 1px;
+    background: currentColor;
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.28s var(--ease-ink);
+  }
+  .hover-underline:hover::after {
+    transform: scaleX(1);
+  }
+
+  /* Rise-in entrance for hero text. Pair with `animate-rise-in`. */
+  .animate-rise-in {
+    animation: riseIn 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+
+  /* Editorial hero serif treatment — solid ink, not gradient. Italic by default
+   * to match the reference. Wrap the title text in <span class="text-hero">. */
+  .text-hero {
+    font-family: var(--font-serif), Georgia, "Times New Roman", serif;
+    font-weight: 600;
+    font-style: italic;
+    letter-spacing: -0.01em;
+    color: var(--foreground);
+  }
+
+  /* Serif italic for section heads — smaller than hero. */
+  .text-serif {
+    font-family: var(--font-serif), Georgia, "Times New Roman", serif;
+  }
+
+  /* Paper grain — fixed, behind everything. A faint dot grid that reads as
+   * texture, not a graph. Pure CSS, no asset. */
+  .paper-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(var(--grain) 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-position: 0 0;
+  }
+
+  /* Faint dot grid (utility form, e.g. inside a hero card). */
+  .dot-grid {
+    background-image: radial-gradient(var(--grain) 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-position: 0 0;
+  }
+
+  /* Vertical ochre divider — the editorial accent rail between sidebar and
+   * content, lifted from the reference design. */
+  .ochre-rail {
+    background: var(--ochre);
+    width: 3px;
+    border-radius: 999px;
+  }
+
+  /* Stagger — children rise in sequence. Apply to a grid/list container; up to
+   * 12 children get a 55ms-step delay. Pairs with --ease-ink for a settling
+   * cascade rather than a bouncy parade. */
+  .animate-stagger > * {
+    animation: riseIn 0.5s var(--ease-ink) both;
+  }
+  .animate-stagger > *:nth-child(1)  { animation-delay: 0ms; }
+  .animate-stagger > *:nth-child(2)  { animation-delay: 55ms; }
+  .animate-stagger > *:nth-child(3)  { animation-delay: 110ms; }
+  .animate-stagger > *:nth-child(4)  { animation-delay: 165ms; }
+  .animate-stagger > *:nth-child(5)  { animation-delay: 220ms; }
+  .animate-stagger > *:nth-child(6)  { animation-delay: 275ms; }
+  .animate-stagger > *:nth-child(7)  { animation-delay: 330ms; }
+  .animate-stagger > *:nth-child(8)  { animation-delay: 385ms; }
+  .animate-stagger > *:nth-child(9)  { animation-delay: 440ms; }
+  .animate-stagger > *:nth-child(10) { animation-delay: 495ms; }
+  .animate-stagger > *:nth-child(11) { animation-delay: 550ms; }
+  .animate-stagger > *:nth-child(12) { animation-delay: 605ms; }
+
+  /* The ochre sidebar dot pops in when its parent becomes active. */
+  .animate-dot-in {
+    animation: dotIn 0.32s var(--ease-ink) both;
+  }
+
+  /* Reduce all motion when the user prefers it. */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fade-in,
+    .animate-glow-pulse,
+    .animate-subtle-pulse,
+    .animate-rise-in,
+    .animate-stagger > *,
+    .animate-dot-in,
+    .text-hero,
+    .hover-bloom,
+    .hover-underline::after,
+    .card-hover {
+      animation: none !important;
+      transition: none !important;
+    }
   }
 }

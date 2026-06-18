@@ -1,9 +1,9 @@
 "use client";
 
 import { toast } from "sonner";
-import { CheckCircle2, GitMerge, ShieldAlert, ShieldCheck, XCircle } from "lucide-react";
+import { GitMerge, ShieldAlert } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { useConsolidate, useContradictions, useHealth } from "@/hooks/useAdmin";
+import { useConsolidate, useContradictions } from "@/hooks/useAdmin";
 import { ApiError } from "@/lib/api/client";
 import type { ConsolidationReport } from "@/lib/api/types";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -25,7 +25,6 @@ const REPORT_LABELS: Record<keyof ConsolidationReport, string> = {
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
-  const health = useHealth();
   const consolidate = useConsolidate();
   const contradictions = useContradictions();
 
@@ -42,62 +41,21 @@ export default function SettingsPage() {
       <PageHeader title="Settings" description="Maintenance, data health, and your account." />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Read-only principle */}
-        <Card className="lg:col-span-2 border-primary/30 bg-primary/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <ShieldCheck className="size-4 text-primary" /> Read-only by design
-            </CardTitle>
-            <CardDescription>
-              Mnemosyne reads your connected accounts to build memory and{" "}
-              <strong className="text-foreground">never writes, sends, edits, or deletes</strong>{" "}
-              anything in them. This is a deliberate trust constraint, not a missing feature — your
-              memory can be wrong without any risk to your real inbox, calendar, or contacts.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-
-        {/* System status */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">System status</CardTitle>
-            <CardDescription>Backend service health.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-3">
-            {health.isLoading ? (
-              <Spinner />
-            ) : health.data ? (
-              Object.entries(health.data.checks).map(([name, ok]) => (
-                <div key={name} className="flex items-center gap-1.5 text-sm capitalize">
-                  {ok ? (
-                    <CheckCircle2 className="size-4 text-emerald-600" />
-                  ) : (
-                    <XCircle className="size-4 text-destructive" />
-                  )}
-                  {name}
-                </div>
-              ))
-            ) : (
-              <span className="text-sm text-muted-foreground">Unavailable</span>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Account */}
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-base">Account</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm">
+          <CardContent className="flex flex-wrap items-end gap-x-10 gap-y-4 text-sm">
             <div>
-              <p className="text-muted-foreground">Name</p>
-              <p>{user?.displayName ?? "—"}</p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Name</p>
+              <p className="mt-1 font-medium">{user?.displayName ?? "—"}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">Email</p>
-              <p>{user?.email}</p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Email</p>
+              <p className="mt-1 font-medium">{user?.email}</p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => void logout()}>
+            <Button variant="outline" size="sm" onClick={() => void logout()} className="ml-auto">
               Sign out
             </Button>
           </CardContent>

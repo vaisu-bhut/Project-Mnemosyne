@@ -35,18 +35,25 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader
+        hero
+        eyebrow="Conductor"
         title={`Welcome back, ${name}`}
-        description="Ask your conductor, and see what your agents have surfaced."
+        description="Ask anything across your memory, and see what your agents have surfaced for you today."
       />
 
-      <div className="mb-6">
+      <div className="mb-5">
         <ConductBox />
       </div>
 
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-lg font-semibold">
-          <Brain className="size-5 text-primary" /> On your mind
-        </h2>
+      <div className="mb-3 flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
+            Surfaced
+          </p>
+          <h2 className="mt-0.5 flex items-center gap-2 text-[17px] font-semibold tracking-tight">
+            <Brain className="size-[18px] text-primary" /> On your mind
+          </h2>
+        </div>
         <Button variant="outline" size="sm" onClick={runNudger} disabled={nudger.isPending}>
           {nudger.isPending ? <Spinner /> : <Zap />}
           Run nudger
@@ -54,7 +61,7 @@ export default function DashboardPage() {
       </div>
 
       {mind.isLoading ? (
-        <div className="flex min-h-[30vh] items-center justify-center">
+        <div className="flex min-h-[25vh] items-center justify-center">
           <Spinner className="size-6 text-muted-foreground" />
         </div>
       ) : mind.isError ? (
@@ -63,7 +70,7 @@ export default function DashboardPage() {
           onRetry={() => void mind.refetch()}
         />
       ) : mind.data && mind.data.length > 0 ? (
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="animate-stagger grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
           {mind.data.map((entry) => (
             <MindCard key={entry.id} entry={entry} />
           ))}
