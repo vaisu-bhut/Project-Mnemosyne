@@ -1,6 +1,6 @@
 ---
 - name: Deploy Backend Services
-  hosts: backend
+  hosts: all
   become: yes
   tasks:
     - name: Update apt cache and install basic tools
