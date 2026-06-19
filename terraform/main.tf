@@ -48,11 +48,15 @@ resource "alicloud_vpc" "main" {
   cidr_block = "10.0.0.0/8"
 }
 
+data "alicloud_zones" "available" {
+  available_resource_creation = "Instance"
+}
+
 resource "alicloud_vswitch" "main" {
   vswitch_name = "${var.project_name}-vswitch"
   vpc_id       = alicloud_vpc.main.id
   cidr_block   = "10.1.0.0/16"
-  zone_id      = "${var.alicloud_region}b"
+  zone_id      = data.alicloud_zones.available.zones[0].id
 }
 
 # Security Group
@@ -110,10 +114,16 @@ data "alicloud_images" "ubuntu" {
   owners      = "system"
 }
 
+data "alicloud_instance_types" "available" {
+  availability_zone = data.alicloud_zones.available.zones[0].id
+  cpu_core_count    = 2
+  memory_size       = 4
+}
+
 resource "alicloud_instance" "backend" {
-  availability_zone = "${var.alicloud_region}b"
+  availability_zone = data.alicloud_zones.available.zones[0].id
   security_groups   = [alicloud_security_group.main.id]
-  instance_type     = var.instance_type
+  instance_type     = data.alicloud_instance_types.available.instance_types[0].id
   system_disk_category = "cloud_efficiency"
   system_disk_size     = 40
   image_id          = data.alicloud_images.ubuntu.images[0].id
