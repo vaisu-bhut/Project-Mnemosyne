@@ -12,9 +12,39 @@ jobs:
   ci:
     name: Test & Security
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # Use pgvector since your project requires it
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: mnemosyne
+          POSTGRES_PASSWORD: mnemosyne
+          POSTGRES_DB: mnemosyne
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Setup Environment
+        working-directory: ./services
+        run: cp .env.example .env
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
