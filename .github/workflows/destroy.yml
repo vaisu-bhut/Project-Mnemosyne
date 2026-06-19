@@ -36,6 +36,10 @@ jobs:
         with:
           terraform_wrapper: false
 
+      - name: Setup dummy SSH file for Terraform validation
+        working-directory: ./terraform
+        run: touch id_rsa.pem.pub
+
       - name: Terraform Init
         working-directory: ./terraform
         run: terraform init -backend-config=backend.conf
