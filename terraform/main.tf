@@ -105,7 +105,7 @@ resource "alicloud_key_pair" "main" {
 
 # Compute Instance
 data "alicloud_images" "ubuntu" {
-  name_regex  = "^ubuntu_22_04"
+  name_regex  = "^ubuntu_22_04_x64_20G_alibase"
   most_recent = true
   owners      = "system"
 }
