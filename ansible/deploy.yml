@@ -62,5 +62,11 @@
 
     - name: Build and spin up containers
       shell: |
+        # If rsync accidentally nested the repository, move all files up one level
+        if [ -f /opt/mnemosyne/Project-Mnemosyne/docker-compose.yml ]; then
+          mv /opt/mnemosyne/Project-Mnemosyne/* /opt/mnemosyne/
+          mv /opt/mnemosyne/Project-Mnemosyne/.* /opt/mnemosyne/ 2>/dev/null || true
+        fi
+        
         cd /opt/mnemosyne
         docker compose up -d --build
