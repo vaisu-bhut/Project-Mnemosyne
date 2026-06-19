@@ -3,7 +3,12 @@ output "ecs_public_ip" {
   value       = alicloud_instance.backend.public_ip
 }
 
-output "dynamodb_table_name" {
-  description = "The name of the DynamoDB table."
-  value       = aws_dynamodb_table.main_db.name
+output "s3_bucket_name" {
+  description = "The name of the S3 artifacts bucket."
+  value       = aws_s3_bucket.artifacts.bucket
+}
+
+output "rds_endpoint" {
+  description = "The endpoint of the RDS PostgreSQL instance."
+  value       = aws_db_instance.postgres.endpoint
 }
