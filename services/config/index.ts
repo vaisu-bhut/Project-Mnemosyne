@@ -34,6 +34,10 @@ const EnvSchema = z.object({
   // replacing the storage module; this is the only config it needs today.
   LOCAL_STORAGE_DIR: z.string().default("./.data/artifacts"),
 
+  // --- AWS S3 ---
+  S3_BUCKET_NAME: z.string().optional(),
+  AWS_REGION: z.string().default("us-east-1"),
+
   // --- Embeddings ---
   // "dev"    = deterministic local embedder (no network/secrets, used in tests)
   // "gemini" = Google gemini-embedding-001 via the Gemini API (AI Studio key)

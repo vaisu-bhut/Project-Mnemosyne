@@ -24,17 +24,47 @@ provider "alicloud" {
   secret_key = var.alicloud_secret_key
 }
 
-# --- AWS Database (DynamoDB) ---
-# Simple DynamoDB table as required by the AWS Hackathon
-resource "aws_dynamodb_table" "main_db" {
-  name           = "${var.project_name}-table"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "id"
+# --- AWS S3 Artifact Bucket ---
+resource "random_id" "bucket_id" {
+  byte_length = 4
+}
 
-  attribute {
-    name = "id"
-    type = "S"
+resource "aws_s3_bucket" "artifacts" {
+  bucket = "${var.project_name}-artifacts-${random_id.bucket_id.hex}"
+
+  tags = {
+    Project = var.project_name
   }
+}
+
+# --- AWS RDS PostgreSQL Database ---
+# Security Group for RDS to allow traffic ONLY from the Alibaba ECS IP
+resource "aws_security_group" "rds_sg" {
+  name        = "${var.project_name}-rds-sg"
+  description = "Allow inbound PostgreSQL traffic from Alibaba ECS"
+}
+
+resource "aws_security_group_rule" "rds_ingress" {
+  type              = "ingress"
+  from_port         = 5432
+  to_port           = 5432
+  protocol          = "tcp"
+  security_group_id = aws_security_group.rds_sg.id
+  cidr_blocks       = ["${alicloud_instance.backend.public_ip}/32"]
+}
+
+resource "aws_db_instance" "postgres" {
+  identifier             = "${var.project_name}-db"
+  db_name                = "mnemosyne"
+  allocated_storage      = 20
+  engine                 = "postgres"
+  engine_version         = "16"
+  instance_class         = "db.t3.micro"
+  username               = "mnemosyne"
+  password               = "Mnemosyne2026"
+  skip_final_snapshot    = true
+  publicly_accessible    = true
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
 
   tags = {
     Project = var.project_name
@@ -84,6 +114,18 @@ resource "alicloud_security_group_rule" "allow_http" {
   nic_type          = "intranet"
   policy            = "accept"
   port_range        = "80/80"
+  priority          = 1
+  security_group_id = alicloud_security_group.main.id
+  cidr_ip           = "0.0.0.0/0"
+}
+
+# Allow HTTPS
+resource "alicloud_security_group_rule" "allow_https" {
+  type              = "ingress"
+  ip_protocol       = "tcp"
+  nic_type          = "intranet"
+  policy            = "accept"
+  port_range        = "443/443"
   priority          = 1
   security_group_id = alicloud_security_group.main.id
   cidr_ip           = "0.0.0.0/0"
@@ -142,7 +184,13 @@ NODE_ENV=production
 AWS_REGION=${var.aws_region}
 AWS_ACCESS_KEY_ID=${var.aws_access_key}
 AWS_SECRET_ACCESS_KEY=${var.aws_secret_key}
-AWS_DYNAMODB_TABLE=${aws_dynamodb_table.main_db.name}
 QWEN_API_KEY=${var.qwen_api_key}
+
+S3_BUCKET_NAME=${aws_s3_bucket.artifacts.bucket}
+DATABASE_URL=postgres://${aws_db_instance.postgres.username}:${aws_db_instance.postgres.password}@${aws_db_instance.postgres.endpoint}/${aws_db_instance.postgres.db_name}
+REDIS_URL=redis://redis:6379
+
+VIRTUAL_HOST=api.clestiq.com
+LETSENCRYPT_HOST=api.clestiq.com
 EOT
 }
