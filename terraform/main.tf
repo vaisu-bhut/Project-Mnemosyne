@@ -52,7 +52,7 @@ resource "alicloud_vswitch" "main" {
   vswitch_name = "${var.project_name}-vswitch"
   vpc_id       = alicloud_vpc.main.id
   cidr_block   = "10.1.0.0/16"
-  zone_id      = "${var.alicloud_region}a"
+  zone_id      = "${var.alicloud_region}b"
 }
 
 # Security Group
@@ -111,7 +111,7 @@ data "alicloud_images" "ubuntu" {
 }
 
 resource "alicloud_instance" "backend" {
-  availability_zone = "${var.alicloud_region}a"
+  availability_zone = "${var.alicloud_region}b"
   security_groups   = [alicloud_security_group.main.id]
   instance_type     = var.instance_type
   system_disk_category = "cloud_efficiency"
