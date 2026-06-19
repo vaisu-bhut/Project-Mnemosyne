@@ -40,7 +40,7 @@ variable "qwen_api_key" {
 
 variable "instance_type" {
   description = "The ECS instance type."
-  default     = "ecs.t5-lc1m1.small"
+  default     = "ecs.s6-c1m2.small"
 }
 
 variable "project_name" {
