@@ -104,7 +104,7 @@ resource "alicloud_security_group_rule" "allow_api" {
 # SSH Key Pair
 resource "alicloud_key_pair" "main" {
   key_pair_name = "${var.project_name}-key"
-  key_file      = "${path.module}/id_rsa.pem"
+  public_key    = file("${path.module}/id_rsa.pem.pub")
 }
 
 # Compute Instance
