@@ -1,0 +1,9 @@
+all:
+  vars:
+    # Assuming Ubuntu image sets up a 'ubuntu' user by default. If 'root', change to 'root'.
+    ansible_user: ubuntu
+    ansible_ssh_private_key_file: ../terraform/id_rsa.pem
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+  hosts:
+    backend:
+      ansible_host: 1.2.3.4 # TODO: Replace this with the IP output from Terraform

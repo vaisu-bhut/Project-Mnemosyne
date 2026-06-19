@@ -1,0 +1,65 @@
+name: Continuous Deployment
+
+on:
+  workflow_run:
+    workflows: ["Continuous Integration"]
+    branches: [main, master]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    name: Continuous Deployment (Terraform & Ansible)
+    runs-on: ubuntu-latest
+    # Only run deploy if the CI workflow was successful
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    env:
+      # These secrets must be added to your GitHub Repository Settings -> Secrets and variables -> Actions
+      TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_alicloud_access_key: ${{ secrets.ALICLOUD_ACCESS_KEY }}
+      TF_VAR_alicloud_secret_key: ${{ secrets.ALICLOUD_SECRET_KEY }}
+      TF_VAR_qwen_api_key: ${{ secrets.QWEN_API_KEY }}
+      
+      # Standard AWS environment variables needed for the S3 backend
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: 'us-east-1' 
+      
+      # Disable strict host key checking for Ansible since we dynamically spin up servers
+      ANSIBLE_HOST_KEY_CHECKING: 'False'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init -backend-config=backend.conf
+
+      - name: Terraform Apply
+        working-directory: ./terraform
+        run: terraform apply -auto-approve
+
+      - name: Get ECS IP
+        id: tf-out
+        working-directory: ./terraform
+        run: |
+          ECS_IP=$(terraform output -raw ecs_public_ip)
+          echo "ecs_ip=$ECS_IP" >> $GITHUB_ENV
+
+      - name: Setup SSH Key
+        run: |
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > terraform/id_rsa.pem
+          chmod 400 terraform/id_rsa.pem
+
+      - name: Run Ansible Playbook
+        working-directory: ./ansible
+        run: |
+          ansible-playbook -i '${{ env.ecs_ip }},' deploy.yml \
+            --extra-vars "ansible_user=ubuntu ansible_ssh_private_key_file=../terraform/id_rsa.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no'"

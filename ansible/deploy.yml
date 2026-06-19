@@ -1,0 +1,57 @@
+---
+- name: Deploy Backend Services
+  hosts: backend
+  become: yes
+  tasks:
+    - name: Update apt cache and install basic tools
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - software-properties-common
+          - rsync
+        state: present
+        update_cache: yes
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker APT repository
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu jammy stable
+        state: present
+
+    - name: Install Docker and Docker Compose
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Ensure project directory exists
+      file:
+        path: /opt/mnemosyne
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+
+    - name: Copy source code to server
+      synchronize:
+        src: ../
+        dest: /opt/mnemosyne/
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=node_modules"
+          - "--exclude=terraform"
+          - "--exclude=ansible"
+
+    - name: Build and spin up containers
+      shell: |
+        cd /opt/mnemosyne
+        docker compose up -d --build

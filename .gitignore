@@ -149,3 +149,11 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Terraform
+terraform.tfvars
+terraform/id_rsa.pem
+terraform/id_rsa.pem.pub
+.terraform/
+*.tfstate
+*.tfstate.backup

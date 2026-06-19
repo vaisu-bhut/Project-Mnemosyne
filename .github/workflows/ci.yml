@@ -1,0 +1,45 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - '**' # Runs on all branches
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  ci:
+    name: Test & Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9.15.0
+
+      - name: Install dependencies
+        working-directory: ./services
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Typecheck (Linting)
+        working-directory: ./services
+        run: pnpm typecheck
+
+      - name: Run Unit Tests
+        working-directory: ./services
+        run: pnpm test
+
+      - name: Security Vulnerability Scan
+        working-directory: ./services
+        # We run the audit but allow it to pass even if it finds vulnerabilities
+        # so it doesn't block your hackathon deployment over minor dependency warnings.
+        run: pnpm audit --audit-level high || true

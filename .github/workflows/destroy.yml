@@ -1,0 +1,45 @@
+name: Destroy Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_destroy:
+        description: 'Type "destroy" to confirm you want to tear down all infrastructure'
+        required: true
+        default: ''
+
+jobs:
+  destroy:
+    name: Destroy Terraform Infrastructure
+    runs-on: ubuntu-latest
+    
+    # Extra safety check: the workflow only runs if you actually typed the word "destroy"
+    if: ${{ github.event.inputs.confirm_destroy == 'destroy' }}
+
+    env:
+      TF_VAR_aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      TF_VAR_aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_alicloud_access_key: ${{ secrets.ALICLOUD_ACCESS_KEY }}
+      TF_VAR_alicloud_secret_key: ${{ secrets.ALICLOUD_SECRET_KEY }}
+      TF_VAR_qwen_api_key: ${{ secrets.QWEN_API_KEY }}
+      
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: 'us-east-1'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init -backend-config=backend.conf
+
+      - name: Terraform Destroy
+        working-directory: ./terraform
+        run: terraform destroy -auto-approve
