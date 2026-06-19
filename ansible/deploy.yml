@@ -50,23 +50,13 @@
         owner: root
         group: root
 
-    - name: Copy source code to server
-      synchronize:
-        src: ../
-        dest: /opt/mnemosyne/
-        rsync_opts:
-          - "--exclude=.git"
-          - "--exclude=node_modules"
-          - "--exclude=terraform"
-          - "--exclude=ansible"
+    - name: Copy source archive to server
+      copy:
+        src: "{{ playbook_dir }}/../code.tar.gz"
+        dest: /opt/mnemosyne/code.tar.gz
 
-    - name: Build and spin up containers
+    - name: Extract archive and spin up containers
       shell: |
-        # If rsync accidentally nested the repository, move all files up one level
-        if [ -f /opt/mnemosyne/Project-Mnemosyne/docker-compose.yml ]; then
-          mv /opt/mnemosyne/Project-Mnemosyne/* /opt/mnemosyne/
-          mv /opt/mnemosyne/Project-Mnemosyne/.* /opt/mnemosyne/ 2>/dev/null || true
-        fi
-        
         cd /opt/mnemosyne
+        tar -xzf code.tar.gz
         docker compose up -d --build
