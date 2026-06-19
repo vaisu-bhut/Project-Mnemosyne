@@ -66,7 +66,8 @@ jobs:
         working-directory: ./ansible
         run: |
           cd ..
-          tar -czf code.tar.gz --exclude=.git --exclude=node_modules --exclude=terraform --exclude=ansible .
+          tar -czf /tmp/code.tar.gz --exclude=.git --exclude=node_modules --exclude=terraform --exclude=ansible .
+          mv /tmp/code.tar.gz ./code.tar.gz
           cd ansible
           ansible-playbook -i '${{ env.ecs_ip }},' deploy.yml \
             --extra-vars "ansible_user=root ansible_ssh_private_key_file=../terraform/id_rsa.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
