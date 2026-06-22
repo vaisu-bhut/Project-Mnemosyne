@@ -408,7 +408,7 @@ export class MemoryScene {
 
     const geom = new THREE.BufferGeometry();
     geom.setAttribute("position", new THREE.BufferAttribute(this.coreCurrentPositions, 3));
-    geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geom.setAttribute("aColor", new THREE.BufferAttribute(colors, 3));
 
     const randoms = new Float32Array(PARTICLE_COUNT);
     const rRandom = mulberry32(777);
@@ -424,11 +424,12 @@ export class MemoryScene {
       },
       vertexShader: `
         uniform float uTime;
+        attribute vec3 aColor;
         attribute float aRandom;
         varying vec3 vColor;
         varying float vRandom;
         void main() {
-          vColor = color;
+          vColor = aColor;
           vRandom = aRandom;
           vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * mvPosition;
