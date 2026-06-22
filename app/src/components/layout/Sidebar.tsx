@@ -20,13 +20,13 @@ import { VoiceCaptureDialog } from "@/components/capture/VoiceCaptureDialog";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/memory", label: "Memory", icon: ScrollText },
-  { href: "/sources", label: "Connections", icon: Plug },
-  { href: "/people", label: "People", icon: Users },
-  { href: "/briefings", label: "Briefings", icon: CalendarClock },
-  { href: "/open-loops", label: "Open Loops", icon: ListChecks },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/app", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/app/memory", label: "Memory", icon: ScrollText },
+  { href: "/app/sources", label: "Connections", icon: Plug },
+  { href: "/app/people", label: "People", icon: Users },
+  { href: "/app/briefings", label: "Briefings", icon: CalendarClock },
+  { href: "/app/open-loops", label: "Open Loops", icon: ListChecks },
+  { href: "/app/settings", label: "Settings", icon: Settings },
 ] as const;
 
 /**
@@ -63,7 +63,7 @@ export function Sidebar() {
       {/* Brand — type only. */}
       <div className="flex h-12 items-center px-5">
         <Link
-          href="/"
+          href="/app"
           className="text-serif text-[19px] font-semibold italic leading-none tracking-tight text-foreground"
         >
           Mnemosyne
@@ -74,7 +74,7 @@ export function Sidebar() {
       {/* Navigation — fills the middle so Capture + identity sit at the bottom. */}
       <nav className="flex flex-1 flex-col gap-[1px] overflow-y-auto px-3 py-3">
         {NAV.map(({ href, label, icon: Icon }) => {
-          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+          const active = href === "/app" ? pathname === "/app" : pathname.startsWith(href);
           return (
             <Link
               key={href}

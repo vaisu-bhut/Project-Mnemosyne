@@ -64,7 +64,7 @@ export function MindCard({ entry }: { entry: BlackboardEntry }) {
           </Badge>
           {entry.entityId && (
             <Link
-              href={`/people/${entry.entityId}`}
+              href={`/app/people/${entry.entityId}`}
               className="text-xs font-medium text-primary hover:underline"
             >
               View person

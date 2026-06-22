@@ -24,7 +24,7 @@ export default function RegisterPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (status === "authenticated") router.replace("/");
+    if (status === "authenticated") router.replace("/app");
   }, [status, router]);
 
   async function onSubmit(e: React.FormEvent) {
@@ -47,7 +47,7 @@ export default function RegisterPage() {
     setSubmitting(true);
     try {
       await register(parsed.data);
-      router.replace("/");
+      router.replace("/app");
     } catch (err) {
       const message =
         err instanceof ApiError && err.status === 409

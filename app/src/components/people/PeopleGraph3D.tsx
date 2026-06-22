@@ -83,7 +83,7 @@ export function PeopleGraph3D({ data }: { data: PeopleGraph }) {
         .linkColor(() => "rgba(148,163,184,0.4)")
         .linkWidth((l) => Math.min(6, Math.max(0.5, l.weight)))
         .linkOpacity(0.5)
-        .onNodeClick((n) => router.push(`/people/${n.id}`))
+        .onNodeClick((n) => router.push(`/app/people/${n.id}`))
         .width(el.clientWidth)
         .height(el.clientHeight);
 

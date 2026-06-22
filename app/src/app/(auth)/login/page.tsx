@@ -23,7 +23,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (status === "authenticated") router.replace("/");
+    if (status === "authenticated") router.replace("/app");
   }, [status, router]);
 
   async function onSubmit(e: React.FormEvent) {
@@ -42,7 +42,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(parsed.data);
-      router.replace("/");
+      router.replace("/app");
     } catch (err) {
       const message =
         err instanceof ApiError && err.status === 401

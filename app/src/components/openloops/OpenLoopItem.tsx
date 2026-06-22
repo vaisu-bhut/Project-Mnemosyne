@@ -36,7 +36,7 @@ export function OpenLoopItem({ loop }: { loop: OpenLoop }) {
           )}
           {loop.counterparty && (
             <Link
-              href={`/people/${loop.counterparty}`}
+              href={`/app/people/${loop.counterparty}`}
               className="text-xs font-medium text-primary hover:underline"
             >
               View person

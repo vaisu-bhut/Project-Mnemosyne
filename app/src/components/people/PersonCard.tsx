@@ -24,7 +24,7 @@ export function PersonCard({
         : `${person.daysSinceContact}d ago`;
 
   return (
-    <Link href={`/people/${person.entityId}`} className="block">
+    <Link href={`/app/people/${person.entityId}`} className="block">
       <Card className="flex h-full flex-col gap-3 p-4 transition-colors hover:bg-accent/40">
         <div className="flex items-center gap-3">
           <div className="flex size-9 items-center justify-center rounded-full bg-muted">

@@ -43,7 +43,7 @@ export function OAuthCallbackHandler({ provider }: { provider: "Google" | "Micro
         return;
       }
       if (linked === "1") {
-        router.replace("/settings");
+        router.replace("/app/settings");
         return;
       }
 
@@ -54,7 +54,7 @@ export function OAuthCallbackHandler({ provider }: { provider: "Google" | "Micro
       }
       try {
         await adoptSession({ accessToken, refreshToken });
-        router.replace("/");
+        router.replace("/app");
       } catch {
         setError("Couldn't complete sign-in. Please try again.");
       }
@@ -65,7 +65,7 @@ export function OAuthCallbackHandler({ provider }: { provider: "Google" | "Micro
     return (
       <main className="flex min-h-svh flex-col items-center justify-center gap-4 p-4 text-center">
         <p className="text-sm text-destructive">{error}</p>
-        <Link href="/settings" className="text-sm font-medium text-primary hover:underline">
+        <Link href="/app/settings" className="text-sm font-medium text-primary hover:underline">
           Back to Settings
         </Link>
       </main>

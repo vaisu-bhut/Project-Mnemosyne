@@ -118,7 +118,7 @@ function ConductResult({ data }: { data: RouteResult }) {
             {alerts.map((a) => (
               <li key={a.entityId} className="flex items-center gap-2 text-sm">
                 <Badge variant="warning">{a.daysSinceContact}d</Badge>
-                <Link href={`/people/${a.entityId}`} className="font-medium hover:underline">
+                <Link href={`/app/people/${a.entityId}`} className="font-medium hover:underline">
                   {a.name}
                 </Link>
               </li>

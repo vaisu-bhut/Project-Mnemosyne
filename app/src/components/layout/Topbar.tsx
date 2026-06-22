@@ -4,14 +4,14 @@ import { useMemo } from "react";
 import { usePathname } from "next/navigation";
 
 const PAGE_LABELS: Array<[match: RegExp | string, label: string]> = [
-  [/^\/people\/[^/]+$/, "People · Profile"],
-  ["/memory", "Memory"],
-  ["/sources", "Connections"],
-  ["/people", "People"],
-  ["/briefings", "Briefings"],
-  ["/open-loops", "Open Loops"],
-  ["/settings", "Settings"],
-  ["/", "Dashboard"],
+  [/^\/app\/people\/[^/]+$/, "People · Profile"],
+  ["/app/memory", "Memory"],
+  ["/app/sources", "Connections"],
+  ["/app/people", "People"],
+  ["/app/briefings", "Briefings"],
+  ["/app/open-loops", "Open Loops"],
+  ["/app/settings", "Settings"],
+  ["/app", "Dashboard"],
 ];
 
 function labelFor(pathname: string): string {

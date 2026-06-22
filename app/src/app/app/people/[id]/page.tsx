@@ -49,7 +49,7 @@ export default function PersonBriefPage() {
     <>
       <div className="mb-4 flex items-center justify-between">
         <Link
-          href="/people"
+          href="/app/people"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" /> People

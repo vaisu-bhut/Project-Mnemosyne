@@ -188,6 +188,12 @@
   to   { transform: scaleX(1); }
 }
 
+/* Scroll hint line — gentle vertical pulse. */
+@keyframes hintPulse {
+  0%, 100% { opacity: 0.3; transform: scaleY(0.7); }
+  50%      { opacity: 1; transform: scaleY(1); }
+}
+
 /* Active sidebar dot — pops in with a subtle settle. */
 @keyframes dotIn {
   0%   { opacity: 0; transform: translateY(-50%) scale(0.4); }
@@ -381,6 +387,530 @@
   /* The ochre sidebar dot pops in when its parent becomes active. */
   .animate-dot-in {
     animation: dotIn 0.32s var(--ease-ink) both;
+  }
+
+  /* ── Landing page (pinned scroll) ─────────────────────────────── */
+
+  .landing-root {
+    position: relative;
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  /* Fixed 3D canvas — the stage that never scrolls. */
+  .landing-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /* Readability scrim. Desktop: strong cream on the LEFT (where text lives),
+   * clearing to transparent on the right (where the graph lives) + a soft
+   * bottom fade. Mobile: a gentler full veil since text overlays the graph. */
+  .landing-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background:
+      linear-gradient(
+        to right,
+        var(--background) 0%,
+        oklch(0.935 0.022 88 / 94%) 26%,
+        oklch(0.935 0.022 88 / 40%) 52%,
+        transparent 72%
+      ),
+      linear-gradient(to top, oklch(0.935 0.022 88 / 55%) 0%, transparent 22%);
+  }
+  @media (max-width: 899px) {
+    .landing-scrim {
+      background: oklch(0.935 0.022 88 / 72%);
+    }
+  }
+
+  /* Top scroll-progress bar. */
+  .landing-progress {
+    position: fixed;
+    inset-block-start: 0;
+    inset-inline: 0;
+    z-index: 40;
+    height: 2px;
+    background: oklch(0 0 0 / 6%);
+  }
+  .landing-progress-fill {
+    height: 100%;
+    transform-origin: left center;
+    transform: scaleX(0);
+    background: linear-gradient(to right, var(--primary), var(--ochre));
+  }
+
+  /* Projected graph label chips. */
+  .landing-labels {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+  }
+  .landing-label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    white-space: nowrap;
+    padding: 0.4rem 0.7rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: oklch(0.97 0.01 88 / 88%);
+    backdrop-filter: blur(6px);
+    color: var(--foreground);
+    opacity: 0;
+    will-change: transform, opacity;
+    box-shadow: 0 4px 14px -6px oklch(var(--shadow-ink) / 30%);
+  }
+  .landing-label-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--primary);
+    margin-top: 0.35rem; /* center with title top */
+  }
+  .landing-label-content {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.25;
+  }
+  .landing-label-title {
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+  .landing-label-details {
+    font-size: 9.5px;
+    color: var(--muted-foreground);
+    margin-top: 0.15rem;
+    font-weight: 400;
+  }
+  .landing-label--person .landing-label-dot { background: var(--ochre); }
+  .landing-label--self {
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border-color: transparent;
+  }
+  .landing-label--self .landing-label-dot { background: var(--primary-foreground); }
+  .landing-label--self .landing-label-details { color: var(--primary-foreground); opacity: 0.8; }
+  .landing-label--category {
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    font-size: 9.5px;
+    font-weight: 700;
+  }
+  .landing-label--category .landing-label-dot {
+    background: var(--color-lilac, #8b7fc7);
+  }
+  .landing-label--episode .landing-label-dot { background: var(--primary); }
+  .landing-label--fact .landing-label-dot { background: var(--color-lilac, #8b7fc7); }
+  .landing-label--source .landing-label-dot { background: var(--ochre); }
+
+  /* Edge relationship annotations */
+  .landing-edge-labels {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+  }
+  .landing-edge-label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding: 0.12rem 0.4rem;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: oklch(0.97 0.01 88 / 75%);
+    backdrop-filter: blur(4px);
+    font-family: var(--font-mono), monospace;
+    font-size: 8.5px;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    opacity: 0;
+    will-change: transform, opacity;
+    box-shadow: 0 2px 8px -3px oklch(var(--shadow-ink) / 15%);
+  }
+  .landing-edge-label--email { color: oklch(0.45 0.15 20); }
+  .landing-edge-label--meeting { color: oklch(0.5 0.15 80); }
+  .landing-edge-label--system { color: oklch(0.45 0.15 260); }
+  .landing-edge-label--conflict { color: var(--destructive); border-color: oklch(0.52 0.20 30 / 25%); }
+
+  /* Traveling meaning-tokens — small chips that ride the edges carrying content. */
+  .landing-tokens {
+    position: fixed;
+    inset: 0;
+    z-index: 6;
+    pointer-events: none;
+  }
+  .landing-token {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    white-space: nowrap;
+    padding: 0.22rem 0.6rem 0.22rem 0.5rem;
+    border-radius: 9999px;
+    border: 1px solid var(--border);
+    background: oklch(0.98 0.008 88 / 92%);
+    backdrop-filter: blur(6px);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--foreground);
+    opacity: 0;
+    will-change: transform, opacity;
+    box-shadow: 0 6px 18px -6px oklch(var(--shadow-ink) / 35%);
+  }
+  .landing-token-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    background: var(--primary);
+    box-shadow: 0 0 8px currentColor;
+    color: var(--primary);
+  }
+  .landing-token-kind {
+    font-size: 8.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted-foreground);
+  }
+  /* Kind palette — dot + accent. */
+  .landing-token[data-kind="episode"] .landing-token-dot { background: var(--primary); color: var(--primary); }
+  .landing-token[data-kind="fact"] .landing-token-dot { background: #8b7fc7; color: #8b7fc7; }
+  .landing-token[data-kind="briefing"] .landing-token-dot { background: var(--ochre); color: var(--ochre); }
+  .landing-token[data-kind="commitment"] .landing-token-dot { background: var(--ochre); color: var(--ochre); }
+  .landing-token[data-kind="conflict"] .landing-token-dot { background: var(--destructive); color: var(--destructive); }
+  .landing-token[data-kind="conflict"] { border-color: oklch(0.52 0.20 30 / 35%); }
+
+  /* Data legend (bottom-left). */
+  .landing-legend {
+    position: fixed;
+    left: 1.5rem;
+    bottom: 1.5rem;
+    z-index: 6;
+    display: flex;
+    gap: 1.1rem;
+    padding: 0.55rem 0.9rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: oklch(0.97 0.01 88 / 80%);
+    backdrop-filter: blur(8px);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted-foreground);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .landing-legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .lg-dot { width: 7px; height: 7px; border-radius: 9999px; display: inline-block; }
+  .lg-people { background: var(--ochre); }
+  .lg-episode { background: var(--primary); }
+  .lg-fact { background: #8b7fc7; }
+  @media (max-width: 640px) { .landing-legend { display: none; } }
+
+  /* Panel layer. Pinned mode: fixed, overlapping, JS cross-fades them. */
+  .landing-pinned .landing-panels {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+  }
+  .landing-pinned .landing-panel {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    opacity: 0;
+    will-change: opacity, transform, filter;
+  }
+
+  /* Content column — LEFT-anchored so the graph (right) never sits under text. */
+  .landing-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    max-width: 38rem;
+    margin-left: clamp(1.5rem, 7vw, 7rem);
+    margin-right: auto;
+    padding-inline: 0 1.5rem;
+  }
+  /* Centered variant for the thesis act. */
+  .landing-col--center {
+    align-items: center;
+    text-align: center;
+    margin-inline: auto;
+    max-width: 42rem;
+  }
+
+  /* Split layout (Acts 4 & 5): text left, card right (over the graph — the card
+   * is near-solid so it reads as an annotation pinned to the scene). */
+  .landing-split {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.75rem;
+    width: 100%;
+    max-width: 70rem;
+    margin-left: clamp(1.5rem, 7vw, 7rem);
+    margin-right: auto;
+    padding-inline: 0 1.5rem;
+    align-items: center;
+  }
+  @media (min-width: 900px) {
+    .landing-split { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); }
+  }
+
+  /* Act number — monospace tick before the kicker. */
+  .landing-num {
+    font-family: var(--font-mono), monospace;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    letter-spacing: 0.05em;
+    padding-right: 0.1rem;
+  }
+
+  .landing-kicker {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    color: var(--primary);
+  }
+  /* Cream glow behind headings so they read over any node behind them. */
+  .landing-heading {
+    color: var(--foreground);
+    text-shadow:
+      0 2px 28px var(--background),
+      0 1px 4px var(--background),
+      0 0 60px var(--background);
+  }
+  .landing-sub {
+    margin-top: 1.4rem;
+    max-width: 34rem;
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--muted-foreground);
+    text-shadow: 0 1px 16px var(--background);
+  }
+
+  /* Scroll hint under Act 1. */
+  .landing-hint {
+    position: absolute;
+    bottom: 2.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.24em;
+    color: var(--muted-foreground);
+  }
+  .landing-hint-line {
+    width: 1px;
+    height: 2.5rem;
+    background: linear-gradient(to bottom, var(--muted-foreground), transparent);
+    animation: hintPulse 2s ease-in-out infinite;
+  }
+
+  /* Right-rail act dots. */
+  .landing-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    transition: all 0.3s var(--ease-ink);
+    cursor: pointer;
+  }
+  .landing-dot[data-active="true"] {
+    background: var(--ochre);
+    border-color: var(--ochre);
+    transform: scale(1.5);
+    box-shadow: 0 0 10px var(--ochre);
+  }
+
+  /* In-scene HTML "cards". */
+  .trace-card,
+  .nudge-card {
+    position: relative;
+    z-index: 1;
+    border: 1px solid var(--border);
+    background: oklch(0.97 0.01 88 / 88%);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.4rem;
+    box-shadow:
+      0 1px 2px oklch(var(--shadow-ink) / 8%),
+      0 24px 50px -12px oklch(var(--shadow-ink) / 22%);
+    backdrop-filter: blur(10px);
+  }
+
+  /* Big CTA. */
+  .cta-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.95rem 2.4rem;
+    border-radius: 9999px;
+    background: var(--primary);
+    color: var(--primary-foreground);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    box-shadow:
+      0 1px 2px oklch(var(--shadow-ink) / 8%),
+      0 16px 40px -8px var(--glow-strong);
+    transition: transform 0.2s var(--ease-ink), box-shadow 0.2s var(--ease-ink);
+  }
+  .cta-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 1px 2px oklch(var(--shadow-ink) / 10%), 0 24px 56px -8px var(--glow-strong);
+  }
+
+  /* Stacked fallback (reduced motion / no canvas): normal scrolling page. */
+  .landing-stacked .landing-canvas,
+  .landing-stacked .landing-scrim,
+  .landing-stacked .landing-hint {
+    display: none;
+  }
+  .landing-stacked .landing-panel {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 80vh;
+    padding-block: 4rem;
+    opacity: 1;
+  }
+
+  /* Live Graph Ingestion Ticker */
+  .landing-monitor {
+    position: fixed;
+    left: 1.5rem;
+    bottom: 5.5rem; /* above the legend */
+    z-index: 6;
+    width: 340px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: oklch(0.97 0.01 88 / 85%);
+    backdrop-filter: blur(8px);
+    padding: 0.8rem;
+    font-family: var(--font-mono), monospace;
+    font-size: 10px;
+    box-shadow: 0 6px 20px -8px oklch(var(--shadow-ink) / 30%);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    transition: opacity 0.5s ease;
+  }
+  
+  .landing-monitor-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.4rem;
+  }
+  
+  .landing-monitor-ping {
+    position: relative;
+    display: inline-flex;
+    width: 8px;
+    height: 8px;
+  }
+  
+  .ping-dot {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 9999px;
+    background: var(--ochre);
+  }
+  
+  .ping-dot.animate-ping {
+    animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+    opacity: 0.75;
+  }
+  
+  @keyframes ping {
+    75%, 100% {
+      transform: scale(2.5);
+      opacity: 0;
+    }
+  }
+  
+  .landing-monitor-title {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--foreground);
+  }
+  
+  .landing-monitor-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 160px;
+    overflow: hidden;
+  }
+  
+  .landing-monitor-event {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    line-height: 1.4;
+    animation: fadeIn 0.3s ease-out both;
+  }
+  
+  .event-time {
+    color: var(--muted-foreground);
+    white-space: nowrap;
+  }
+  
+  .event-badge {
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  
+  .badge-gmail { background: oklch(0.92 0.04 20); color: oklch(0.45 0.15 20); }
+  .badge-gcal { background: oklch(0.92 0.05 80); color: oklch(0.5 0.15 80); }
+  .badge-notes { background: oklch(0.92 0.04 140); color: oklch(0.45 0.15 140); }
+  .badge-consolidator { background: oklch(0.92 0.03 260); color: oklch(0.45 0.15 260); }
+  .badge-graphengine { background: oklch(0.92 0.04 310); color: oklch(0.45 0.15 310); }
+  .badge-asr { background: oklch(0.92 0.03 200); color: oklch(0.45 0.15 200); }
+  
+  .event-text {
+    color: var(--foreground);
+    word-break: break-word;
+  }
+
+  @media (max-width: 640px) {
+    .landing-monitor {
+      display: none;
+    }
   }
 
   /* Reduce all motion when the user prefers it. */

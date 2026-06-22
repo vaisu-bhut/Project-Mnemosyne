@@ -125,7 +125,7 @@ export function ProactiveNotifier() {
       void notify(`Briefing ready: ${b.eventTitle ?? who ?? "upcoming meeting"}`, {
         body: who ? `Meeting with ${who} starting soon — your briefing is ready.` : undefined,
         tag: key,
-        url: "/briefings",
+        url: "/app/briefings",
       });
     }
     if (changed) saveSeen(seen);
