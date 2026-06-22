@@ -23,7 +23,7 @@ class FrameTimer {
   }
 }
 
-const TOKEN_COUNT = 12;
+const TOKEN_COUNT = 18;
 
 const COLOR_INDIGO = new THREE.Color(0x4a3aa8);
 const COLOR_OCHRE = new THREE.Color(0xd9a653);
@@ -59,26 +59,45 @@ const edgePairs: [number, number][] = [
   // Work to People
   [1, 6], [1, 7], [1, 8], [1, 10],
   // Friends to People
-  [2, 7], [2, 9],
+  [2, 7], [2, 9], [2, 11],
   // Family to People
   [3, 11], [3, 12],
   // Project Aurora connections
-  [4, 6], [4, 16], [4, 22],
+  [4, 6], [4, 16], [4, 22], [4, 10],
   // Personal AI
-  [5, 15], [5, 19],
+  [5, 15], [5, 19], [5, 0],
   // Episodes to People / Categories
-  [16, 6], [16, 7], // Sync w/ Sara & Priya
-  [17, 7],          // Dinner w/ Priya
-  [18, 8],          // Coffee w/ Marcus
-  [20, 1],          // Weekly Review to Work
-  [21, 8],          // Design Handoff to Marcus
+  [16, 6], [16, 7],
+  [17, 7],
+  [18, 8],
+  [19, 9],
+  [20, 1],
+  [21, 8],
   // Facts to People
-  [22, 6],          // Aurora Due Wed to Sara
-  [23, 8],          // Marcus = Realtor to Marcus
-  [24, 6],          // Sara's new phone to Sara
-  [25, 0],          // Flight to You
-  [26, 7],          // Priya's new job to Priya
-  [27, 9],          // Owe Jane reply to Jane
+  [22, 6],
+  [23, 8],
+  [24, 6],
+  [25, 0],
+  [26, 7],
+  [27, 9],
+  // Cross-links for density
+  [6, 8], [7, 10], [8, 9], [9, 11], [10, 12],
+  [1, 4], [2, 3], [13, 1], [14, 4],
+  // Filler node connections (indices 28-47)
+  [28, 0], [28, 1], [29, 2], [29, 7],
+  [30, 1], [30, 6], [31, 3], [31, 11],
+  [32, 4], [32, 22], [33, 5], [33, 15],
+  [34, 0], [34, 13], [35, 1], [35, 8],
+  [36, 2], [36, 9], [37, 3], [37, 12],
+  [38, 4], [38, 16], [39, 5], [39, 19],
+  [40, 6], [40, 7], [41, 8], [41, 10],
+  [42, 9], [42, 11], [43, 12], [43, 0],
+  [44, 13], [44, 14], [45, 15], [45, 1],
+  [46, 16], [46, 17], [47, 18], [47, 20],
+  [28, 30], [29, 31], [32, 33], [34, 35],
+  [36, 37], [38, 39], [40, 41], [42, 43],
+  [44, 45], [46, 47], [28, 34], [30, 35],
+  [29, 36], [31, 37], [32, 38], [33, 39],
 ];
 
 // Orchestrated camera sweep keyframes for Acts 1-6
@@ -168,6 +187,28 @@ export class MemoryScene {
     { idx: 66, text: "Flight UA 244", detail: "Travel confirmation · Aug 24", kind: "fact" },
     { idx: 78, text: "Priya's new job", detail: "Extracted Fact · PM at Google", kind: "fact" },
     { idx: 90, text: "Owe Jane reply", detail: "Open loop · 3d overdue", kind: "fact" },
+
+    // Filler nodes for density (indices 28-47)
+    { idx: 200, text: "Team Standup", detail: "Recurring · Daily", kind: "episode" },
+    { idx: 201, text: "Book Club", detail: "Category · 4 members", kind: "category" },
+    { idx: 202, text: "Sprint Planning", detail: "Meeting · Biweekly", kind: "episode" },
+    { idx: 203, text: "Dad", detail: "Contact · Family", kind: "person" },
+    { idx: 204, text: "Patent Filing", detail: "Topic · In review", kind: "fact" },
+    { idx: 205, text: "Notion Sync", detail: "Source · 42 pages", kind: "source" },
+    { idx: 206, text: "Slack DMs", detail: "Source · 320 threads", kind: "source" },
+    { idx: 207, text: "1:1 w/ Manager", detail: "Meeting · Fridays", kind: "episode" },
+    { idx: 208, text: "Lisa Chen", detail: "Contact · Recruiter", kind: "person" },
+    { idx: 209, text: "Yoga Class", detail: "Recurring · Mon/Wed", kind: "episode" },
+    { idx: 210, text: "Rent Due", detail: "Commitment · Monthly", kind: "fact" },
+    { idx: 211, text: "API Docs", detail: "Reference · v2.4", kind: "fact" },
+    { idx: 212, text: "Dentist Appt", detail: "Scheduled · Sep 3", kind: "episode" },
+    { idx: 213, text: "Side Project", detail: "Topic · 8 commits", kind: "category" },
+    { idx: 214, text: "Newsletter", detail: "Source · Weekly", kind: "source" },
+    { idx: 215, text: "Tom Park", detail: "Contact · Mentor", kind: "person" },
+    { idx: 216, text: "Retro Notes", detail: "Meeting · Q3", kind: "episode" },
+    { idx: 217, text: "Lunch Plan", detail: "Commitment · Thu", kind: "fact" },
+    { idx: 218, text: "Board Prep", detail: "Topic · 5 slides", kind: "fact" },
+    { idx: 219, text: "Gym Session", detail: "Recurring · Tue/Thu", kind: "episode" },
   ];
   labelScreens: { x: number; y: number; opacity: number }[] = [];
 
@@ -186,11 +227,8 @@ export class MemoryScene {
   // Meaning tokens traveling along neural synapses
   tokenScreens: { x: number; y: number; opacity: number }[] = [];
 
-  // Web Audio Context & Nodes
+  // Web Audio Context (hover tick only)
   private audioCtx: AudioContext | null = null;
-  private droneOsc: OscillatorNode | null = null;
-  private droneFilter: BiquadFilterNode | null = null;
-  private droneGain: GainNode | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.labelScreens = this.labels.map(() => ({ x: 0, y: 0, opacity: 0 }));
@@ -327,6 +365,9 @@ export class MemoryScene {
 
   private generateNodePositions(): void {
     const total = this.labels.length;
+    const totalSources = this.labels.filter(l => l.kind === "source").length;
+    let sourceCount = 0;
+
     this.labels.forEach((label, i) => {
       // Create double hemisphere brain layout
       const isLeft = i % 2 === 0;
@@ -335,14 +376,14 @@ export class MemoryScene {
       const phi = Math.acos(-1 + (2 * i) / total);
       const theta = Math.sqrt(total * Math.PI) * phi;
       
-      const r = 2.8 + 0.4 * Math.sin(theta * 2.5); // Organic neural fold radius
-      let x = r * Math.sin(phi) * Math.cos(theta) * sideSign * 0.95;
-      let y = r * Math.sin(phi) * Math.sin(theta) * 0.65 + 0.4;
-      let z = r * Math.cos(phi) * 0.75;
+      const r = 2.2 + 0.3 * Math.sin(theta * 2.5); // Tighter organic globe
+      let x = r * Math.sin(phi) * Math.cos(theta) * sideSign * 0.9;
+      let y = r * Math.sin(phi) * Math.sin(theta) * 0.6 + 0.3;
+      let z = r * Math.cos(phi) * 0.7;
       
-      // Shape adjustments
-      if (z > 1.2) { x *= 0.7; y *= 0.85; } 
-      if (z < -1.2) { x *= 0.65; y *= 0.75; }
+      // Shape adjustments for tighter globe
+      if (z > 1.0) { x *= 0.75; y *= 0.85; } 
+      if (z < -1.0) { x *= 0.7; y *= 0.8; }
 
       // Fixed positioning for prominent architectural nodes
       if (label.kind === "self") {
@@ -358,8 +399,11 @@ export class MemoryScene {
       } else if (label.text === "Personal AI") {
         this.nodePositions.push(new THREE.Vector3(0, 1.6, -0.8));
       } else if (label.kind === "source") {
-        const sourceIdx = i - 13;
-        this.nodePositions.push(new THREE.Vector3((sourceIdx - 1) * 2.2, -2.0, -0.5));
+        const sourceIdx = sourceCount;
+        sourceCount++;
+        const spacing = 1.1;
+        const offset = (sourceIdx - (totalSources - 1) / 2) * spacing;
+        this.nodePositions.push(new THREE.Vector3(offset, -2.0, -0.5));
       } else {
         this.nodePositions.push(new THREE.Vector3(x, y, z));
       }
@@ -373,7 +417,7 @@ export class MemoryScene {
     
     // Style materials with transparent colors
     const material = this.radarGrid.material as THREE.LineBasicMaterial;
-    material.color = COLOR_LILAC;
+    material.color = new THREE.Color(0x9a9590);
     material.transparent = true;
     material.opacity = 0.16;
     material.blending = THREE.AdditiveBlending;
@@ -393,7 +437,7 @@ export class MemoryScene {
     this.ring1 = new THREE.LineLoop(
       ringGeom1,
       new THREE.LineBasicMaterial({
-        color: COLOR_OCHRE,
+        color: new THREE.Color(0xa09888),
         transparent: true,
         opacity: 0.35,
         blending: THREE.AdditiveBlending
@@ -411,7 +455,7 @@ export class MemoryScene {
     this.ring2 = new THREE.LineLoop(
       ringGeom2,
       new THREE.LineBasicMaterial({
-        color: COLOR_LILAC,
+        color: new THREE.Color(0x8a8078),
         transparent: true,
         opacity: 0.22,
         blending: THREE.AdditiveBlending
@@ -423,42 +467,37 @@ export class MemoryScene {
   private buildNeuralNetwork(): void {
     const sphereGeom = new THREE.SphereGeometry(0.12, 16, 16);
 
-    // Create 3D Node Meshes
+    // Create 3D Node Meshes — monochrome palette
+    const NODE_COLOR = new THREE.Color(0x8a8078); // warm stone
+    const SELF_COLOR = new THREE.Color(0xddd8ce); // light cream for center
+
     this.labels.forEach((label, i) => {
       const pos = this.nodePositions[i]!;
       
-      let color = COLOR_LILAC;
-      let size = 0.12;
+      let size = 0.10;
       
       if (label.kind === "self") {
-        color = new THREE.Color(0xffffff);
-        size = 0.24;
+        size = 0.22;
       } else if (label.kind === "category") {
-        color = COLOR_OCHRE;
-        size = 0.18;
+        size = 0.16;
       } else if (label.kind === "source") {
-        color = new THREE.Color(0x53d9be);
-        size = 0.15;
+        size = 0.13;
       } else if (label.kind === "episode") {
-        color = COLOR_INDIGO;
-        size = 0.09;
+        size = 0.08;
       } else if (label.kind === "fact") {
-        color = COLOR_LILAC;
-        size = 0.07;
+        size = 0.06;
       }
 
       const mat = new THREE.MeshPhysicalMaterial({
-        color: color,
+        color: label.kind === "self" ? SELF_COLOR : NODE_COLOR,
         transparent: true,
-        opacity: 0.85,
-        roughness: 0.15,
-        metalness: 0.9,
-        transmission: 0.6,
+        opacity: 0.92,
+        roughness: 0.35,
+        metalness: 0.4,
+        transmission: 0.3,
         thickness: 0.5,
         ior: 1.4,
-        clearcoat: 1.0,
-        emissive: color,
-        emissiveIntensity: 0.3, // Clean, elegant, constant glow
+        clearcoat: 0.8,
       });
 
       const mesh = new THREE.Mesh(sphereGeom, mat);
@@ -469,7 +508,7 @@ export class MemoryScene {
       if (label.kind === "self" || label.kind === "category") {
         const ringGeom = new THREE.RingGeometry(0.3, 0.32, 32);
         const ringMat = new THREE.MeshBasicMaterial({
-          color: COLOR_OCHRE,
+          color: new THREE.Color(0xa09888),
           side: THREE.DoubleSide,
           transparent: true,
           opacity: 0.45,
@@ -499,7 +538,7 @@ export class MemoryScene {
     this.connectionLines = new THREE.LineSegments(
       lineGeom,
       new THREE.LineBasicMaterial({
-        color: COLOR_LILAC,
+        color: new THREE.Color(0x8a8078),
         transparent: true,
         opacity: 0.28,
         blending: THREE.AdditiveBlending,
@@ -514,24 +553,6 @@ export class MemoryScene {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContextClass) return;
       this.audioCtx = new AudioContextClass();
-      
-      this.droneOsc = this.audioCtx.createOscillator();
-      this.droneOsc.type = "sawtooth";
-      this.droneOsc.frequency.setValueAtTime(55, this.audioCtx.currentTime);
-      
-      this.droneFilter = this.audioCtx.createBiquadFilter();
-      this.droneFilter.type = "lowpass";
-      this.droneFilter.frequency.setValueAtTime(120, this.audioCtx.currentTime);
-      this.droneFilter.Q.setValueAtTime(5.0, this.audioCtx.currentTime);
-      
-      this.droneGain = this.audioCtx.createGain();
-      this.droneGain.gain.setValueAtTime(0.001, this.audioCtx.currentTime);
-      
-      this.droneOsc.connect(this.droneFilter);
-      this.droneFilter.connect(this.droneGain);
-      this.droneGain.connect(this.audioCtx.destination);
-      
-      this.droneOsc.start();
     } catch (err) {
       console.warn("Web Audio Context could not initialize", err);
     }
@@ -651,17 +672,7 @@ export class MemoryScene {
       this.cameraOffset.lerp(new THREE.Vector3(0, 0, 0), 0.1);
     }
 
-    // Audio modulations based on scrolling speed & depth
-    if (!this.audioCtx && (this.mouse.x > -900 || progress > 0.001)) {
-      this.initAudio();
-    }
-    if (this.audioCtx && this.droneOsc && this.droneFilter && this.droneGain) {
-      if (this.audioCtx.state === "suspended") this.audioCtx.resume();
-      const now = this.audioCtx.currentTime;
-      this.droneOsc.frequency.setTargetAtTime(55 + progress * 55, now, 0.15);
-      this.droneFilter.frequency.setTargetAtTime(120 + this.scrollSpeed * 800 + progress * 150, now, 0.15);
-      this.droneGain.gain.setTargetAtTime(Math.min(0.05, 0.012 + this.scrollSpeed * 0.12), now, 0.25);
-    }
+
 
     // Dynamic camera sweep path based on scroll progress
     const { cam: targetCam, look: targetLook } = this.interpolateKeyframes(progress);

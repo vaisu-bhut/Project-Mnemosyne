@@ -77,10 +77,31 @@ const LANDING_LABELS: { text: string; detail?: string; kind: "self" | "person" |
   { text: "Flight UA 244", detail: "Travel confirmation · Aug 24", kind: "fact" },
   { text: "Priya's new job", detail: "Extracted Fact · PM at Google", kind: "fact" },
   { text: "Owe Jane reply", detail: "Open loop · 3d overdue", kind: "fact" },
+
+  // Filler nodes for density
+  { text: "Team Standup", detail: "Recurring · Daily", kind: "episode" },
+  { text: "Book Club", detail: "Category · 4 members", kind: "category" },
+  { text: "Sprint Planning", detail: "Meeting · Biweekly", kind: "episode" },
+  { text: "Dad", detail: "Contact · Family", kind: "person" },
+  { text: "Patent Filing", detail: "Topic · In review", kind: "fact" },
+  { text: "Notion Sync", detail: "Source · 42 pages", kind: "source" },
+  { text: "Slack DMs", detail: "Source · 320 threads", kind: "source" },
+  { text: "1:1 w/ Manager", detail: "Meeting · Fridays", kind: "episode" },
+  { text: "Lisa Chen", detail: "Contact · Recruiter", kind: "person" },
+  { text: "Yoga Class", detail: "Recurring · Mon/Wed", kind: "episode" },
+  { text: "Rent Due", detail: "Commitment · Monthly", kind: "fact" },
+  { text: "API Docs", detail: "Reference · v2.4", kind: "fact" },
+  { text: "Dentist Appt", detail: "Scheduled · Sep 3", kind: "episode" },
+  { text: "Side Project", detail: "Topic · 8 commits", kind: "category" },
+  { text: "Newsletter", detail: "Source · Weekly", kind: "source" },
+  { text: "Tom Park", detail: "Contact · Mentor", kind: "person" },
+  { text: "Retro Notes", detail: "Meeting · Q3", kind: "episode" },
+  { text: "Lunch Plan", detail: "Commitment · Thu", kind: "fact" },
+  { text: "Board Prep", detail: "Topic · 5 slides", kind: "fact" },
+  { text: "Gym Session", detail: "Recurring · Tue/Thu", kind: "episode" },
 ];
 
-/** Mirrors MemoryScene's TOKEN_COUNT (12). Each travels an edge carrying a real
- * piece of memory — an episode, a fact, a briefing, a commitment, a conflict. */
+/** Mirrors MemoryScene's TOKEN_COUNT (18). */
 const TOKEN_META: { text: string; kind: string }[] = [
   { text: "Lunch with Sara", kind: "episode" },
   { text: "Marcus → Sara's realtor", kind: "fact" },
@@ -94,6 +115,12 @@ const TOKEN_META: { text: string; kind: string }[] = [
   { text: "You owe Jane a reply", kind: "commitment" },
   { text: "Meeting in 15 min", kind: "briefing" },
   { text: "Call with Dr. Alvarez", kind: "episode" },
+  { text: "Standup recap", kind: "briefing" },
+  { text: "Rent auto-pay", kind: "commitment" },
+  { text: "Sprint retro summary", kind: "episode" },
+  { text: "Notion page updated", kind: "fact" },
+  { text: "Lisa re: interview", kind: "episode" },
+  { text: "Gym membership renewal", kind: "commitment" },
 ];
 
 /** Mirrors MemoryScene.edgeLabels (same order) so edge relationship annotations
@@ -357,7 +384,7 @@ export function Landing() {
         <div className="flex items-center gap-4 font-mono text-[9px]">
           <span>COORDINATE SCAN: {(scrollProgress * 100).toFixed(0)}%</span>
           <span aria-hidden className="h-3 w-px bg-border hidden md:block" />
-          <span className="hidden md:inline">AUDIO DRONE: {(55 + scrollProgress * 55).toFixed(0)}HZ</span>
+          <span className="hidden md:inline">NODES ACTIVE: 48 · EDGES: {Math.round(82 * Math.min(1, scrollProgress * 2.5 + 0.4))}</span>
         </div>
         <div className="font-mono text-[9px]">
           <Link
@@ -546,8 +573,8 @@ export function Landing() {
         </div>
 
         {/* Act 4 */}
-        <div ref={setPanel(3)} className="landing-panel">
-          <div className="landing-split">
+        <div ref={setPanel(3)} className="landing-panel landing-panel--top-right">
+          <div className="landing-split landing-split--right" style={{ alignItems: 'start' }}>
             <div className="landing-col">
               <p className="landing-kicker">
                 <span className="landing-num">{num(4)}</span> Cites
@@ -562,7 +589,7 @@ export function Landing() {
                 forget, made operable.
               </p>
             </div>
-            <div className="trace-card">
+            <div className="trace-card" style={{ marginTop: '0.5rem' }}>
               <span className="hud-corner hud-tl" />
               <span className="hud-corner hud-tr" />
               <span className="hud-corner hud-bl" />
@@ -589,8 +616,8 @@ export function Landing() {
         </div>
 
         {/* Act 5 */}
-        <div ref={setPanel(4)} className="landing-panel">
-          <div className="landing-split">
+        <div ref={setPanel(4)} className="landing-panel landing-panel--top-right">
+          <div className="landing-split landing-split--right" style={{ alignItems: 'start' }}>
             <div className="landing-col">
               <p className="landing-kicker">
                 <span className="landing-num">{num(5)}</span> Interrupts
@@ -603,7 +630,7 @@ export function Landing() {
                 surfaced with reasoning, snoozable, quiet by default.
               </p>
             </div>
-            <div className="nudge-card font-mono">
+            <div className="nudge-card font-mono" style={{ marginTop: '0.5rem' }}>
               <span className="hud-corner hud-tl" />
               <span className="hud-corner hud-tr" />
               <span className="hud-corner hud-bl" />
