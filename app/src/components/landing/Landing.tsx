@@ -95,6 +95,7 @@ function smoothstep(e0: number, e1: number, x: number): number {
 
 export function Landing() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const sceneRef = useRef<import("./MemoryScene").MemoryScene | null>(null);
   const panelRefs = useRef<Array<HTMLDivElement | null>>([]);
   const dotRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const labelRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -201,6 +202,7 @@ export function Landing() {
       const { MemoryScene } = await import("./MemoryScene");
       if (!alive || !canvasRef.current) return;
       scene = new MemoryScene(canvasRef.current);
+      sceneRef.current = scene;
       scene.init();
       window.addEventListener("scroll", onScroll, { passive: true });
       window.addEventListener("resize", onResize);
@@ -223,6 +225,7 @@ export function Landing() {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("mousemove", onMouseMove);
       scene?.destroy();
+      sceneRef.current = null;
     };
   }, [prefersReduced]);
 
@@ -260,14 +263,28 @@ export function Landing() {
       </header>
 
       {/* Projected graph label chips (HTML over the canvas). */}
-      <div aria-hidden className="landing-labels">
+      <div className="landing-labels">
         {LANDING_LABELS.map((l, i) => (
           <div
             key={l.text}
             ref={(el) => {
               labelRefs.current[i] = el;
             }}
-            className={`landing-label landing-label--${l.kind}`}
+            className={`landing-label landing-label--${l.kind} cursor-pointer hover:scale-[1.03] transition-transform duration-200`}
+            onMouseEnter={() => {
+              if (sceneRef.current) {
+                const nodeIdx = sceneRef.current.labels[i]?.idx;
+                if (nodeIdx !== undefined) {
+                  sceneRef.current.hoveredNodeIdx = nodeIdx;
+                }
+                sceneRef.current.triggerTickSound();
+              }
+            }}
+            onMouseLeave={() => {
+              if (sceneRef.current) {
+                sceneRef.current.hoveredNodeIdx = null;
+              }
+            }}
           >
             <span className="landing-label-dot" />
             <div className="landing-label-content">
