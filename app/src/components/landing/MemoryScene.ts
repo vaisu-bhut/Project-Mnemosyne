@@ -4,7 +4,6 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 
-/** Minimal frame timer — avoids the deprecated THREE.Clock and keeps zero deps. */
 class FrameTimer {
   private last = 0;
   private elapsed = 0;
@@ -12,7 +11,7 @@ class FrameTimer {
   update(): void {
     const now = (typeof performance !== "undefined" ? performance.now() : 0) / 1000;
     if (this.last === 0) this.last = now;
-    this.delta = Math.min(0.05, now - this.last); // clamp to avoid jumps after tab-switch
+    this.delta = Math.min(0.05, now - this.last);
     this.last = now;
     this.elapsed += this.delta;
   }
@@ -24,14 +23,12 @@ class FrameTimer {
   }
 }
 
-const PARTICLE_COUNT = 3500;
 const HUB_COUNT = 10;
 const TOKEN_COUNT = 12;
 
 const COLOR_INDIGO = new THREE.Color(0x4a3aa8);
 const COLOR_OCHRE = new THREE.Color(0xd9a653);
 const COLOR_LILAC = new THREE.Color(0x8b7fc7);
-const COLOR_ALERT = new THREE.Color(0xc2492f);
 const COLOR_BG = new THREE.Color("#efe8d5");
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
@@ -39,23 +36,8 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-function actProgress(p: number, start: number, end: number): number {
-  return Math.max(0, Math.min(1, (p - start) / (end - start)));
-}
-
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
-}
-
-function mulberry32(seed: number): () => number {
-  let s = seed;
-  return () => {
-    s |= 0;
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 export class MemoryScene {
@@ -68,19 +50,13 @@ export class MemoryScene {
   private grainPass!: ShaderPass;
   private timer = new FrameTimer();
 
-  // The main Volumetric Core particle system
-  private coreParticles!: THREE.Points;
-  private corePositionsBase = new Float32Array(PARTICLE_COUNT * 3);
-  private corePositionsLattice = new Float32Array(PARTICLE_COUNT * 3);
-  private corePositionsTunnel = new Float32Array(PARTICLE_COUNT * 3);
-  private coreCurrentPositions = new Float32Array(PARTICLE_COUNT * 3);
-  private coreVelocities = new Float32Array(PARTICLE_COUNT * 3);
+  // 3D Cybernetic Grid Highway
+  private gridGeom!: THREE.PlaneGeometry;
+  private gridBasePositions!: Float32Array;
+  private gridMesh!: THREE.LineSegments;
 
-  // Concentric wireframe orbital shells
-  private shells: THREE.LineSegments[] = [];
-
-  // Shockwave alert rings
-  private shockwaveRings: THREE.Mesh[] = [];
+  // Holographic Monoliths (Rising Data Towers)
+  private monoliths: THREE.Mesh[] = [];
 
   // Interaction
   private raycaster = new THREE.Raycaster();
@@ -91,25 +67,6 @@ export class MemoryScene {
   private lastScrollY = 0;
   private scrollSpeed = 0;
   private vec = new THREE.Vector3();
-  private mouseWorldPos = new THREE.Vector3();
-
-  // HUD & Connections
-  private hudGrid!: THREE.GridHelper;
-  private scanningLine!: THREE.Mesh;
-  private connectionsGeom = new THREE.BufferGeometry();
-  private connectionsLine!: THREE.LineSegments;
-
-  // Web Audio Context & Nodes
-  private audioCtx: AudioContext | null = null;
-  private droneOsc: OscillatorNode | null = null;
-  private droneFilter: BiquadFilterNode | null = null;
-  private droneGain: GainNode | null = null;
-
-  // Spline Path
-  private cameraSpline!: THREE.CatmullRomCurve3;
-
-  // Refractive Glass Nodes
-  private glassNodes: THREE.Mesh[] = [];
 
   // Metadata labels mapped to index nodes
   readonly labels: { idx: number; text: string; detail?: string; kind: "self" | "person" | "category" | "episode" | "fact" | "source" }[] = [
@@ -165,21 +122,18 @@ export class MemoryScene {
   edgeLabelScreens: { x: number; y: number; opacity: number }[] = [];
 
   // Meaning tokens traveling along pipeline conveyor belts
-  private tokenEdge = new Int16Array(TOKEN_COUNT);
-  private tokenT = new Float32Array(TOKEN_COUNT);
-  private tokenSpeed = new Float32Array(TOKEN_COUNT);
   tokenScreens: { x: number; y: number; opacity: number }[] = [];
+
+  // Web Audio Context & Nodes
+  private audioCtx: AudioContext | null = null;
+  private droneOsc: OscillatorNode | null = null;
+  private droneFilter: BiquadFilterNode | null = null;
+  private droneGain: GainNode | null = null;
 
   constructor(private canvas: HTMLCanvasElement) {
     this.labelScreens = this.labels.map(() => ({ x: 0, y: 0, opacity: 0 }));
     this.edgeLabelScreens = this.edgeLabels.map(() => ({ x: 0, y: 0, opacity: 0 }));
     this.tokenScreens = Array.from({ length: TOKEN_COUNT }, () => ({ x: 0, y: 0, opacity: 0 }));
-    const rand = mulberry32(53);
-    for (let i = 0; i < TOKEN_COUNT; i++) {
-      this.tokenEdge[i] = i % HUB_COUNT;
-      this.tokenT[i] = rand();
-      this.tokenSpeed[i] = 0.08 + rand() * 0.09;
-    }
   }
 
   setMouse(x: number, y: number): void {
@@ -202,71 +156,88 @@ export class MemoryScene {
     this.renderer.setClearColor(COLOR_BG, 0);
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(COLOR_BG, 12, 45);
+    this.scene.fog = new THREE.Fog(COLOR_BG, 15, 95);
 
-    this.camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 120);
-    this.camera.position.set(0, 0, 16);
+    this.camera = new THREE.PerspectiveCamera(55, w / h, 0.1, 150);
+    this.camera.position.set(0, 2, 10);
 
     const key = new THREE.DirectionalLight(0xffffff, 1.8);
-    key.position.set(3, 5, 6);
+    key.position.set(3, 10, 6);
     this.scene.add(key);
-    this.scene.add(new THREE.AmbientLight(0xc6b69a, 0.75));
+    this.scene.add(new THREE.AmbientLight(0xc6b69a, 0.65));
 
     this.world = new THREE.Group();
     this.scene.add(this.world);
 
-    // Initialize Camera Spline Curve
-    const splinePoints = [
-      new THREE.Vector3(0, 0, 16),      // Act 1: distant nebula
-      new THREE.Vector3(0, 0.8, 13.5),  // Act 2: connect / vortex
-      new THREE.Vector3(0, 0.4, 9.5),   // Act 3: lattice ignition
-      new THREE.Vector3(0, 0, 0.1),     // Act 4: inside fly-through portal
-      new THREE.Vector3(0, 0.5, 14.5),  // Act 5: alert / supernova pullback
-      new THREE.Vector3(0, 0, 26),      // Act 6: starfield pullback
-    ];
-    this.cameraSpline = new THREE.CatmullRomCurve3(splinePoints);
-
-    this.buildCoreParticles();
-    this.buildConcentricShells();
-    this.buildSonarRings();
-    this.buildHUDAndConnections();
-    this.buildGlassNodes();
+    this.buildGridHighway();
+    this.buildMonoliths();
     this.buildComposer(w, h, dpr);
   }
 
-  private buildGlassNodes(): void {
-    const sphereGeom = new THREE.IcosahedronGeometry(0.32, 2);
-    // MeshPhysicalMaterial with high transmission (refractive glass)
+  private buildGridHighway(): void {
+    // Large plane geometry with height segments to allow smooth horizon bending
+    this.gridGeom = new THREE.PlaneGeometry(60, 200, 24, 80);
+    this.gridGeom.rotateX(-Math.PI / 2); // Lay flat on ground
+
+    // Save base coordinates to compute dynamic curved horizon relative offsets
+    const baseAttrib = this.gridGeom.attributes.position as THREE.BufferAttribute;
+    this.gridBasePositions = new Float32Array(baseAttrib.count * 3);
+    for (let i = 0; i < baseAttrib.count; i++) {
+      this.gridBasePositions[i * 3 + 0] = baseAttrib.getX(i);
+      this.gridBasePositions[i * 3 + 1] = baseAttrib.getY(i);
+      this.gridBasePositions[i * 3 + 2] = baseAttrib.getZ(i);
+    }
+
+    const wiregeom = new THREE.WireframeGeometry(this.gridGeom);
+    this.gridMesh = new THREE.LineSegments(
+      wiregeom,
+      new THREE.LineBasicMaterial({
+        color: COLOR_LILAC,
+        transparent: true,
+        opacity: 0.22,
+        blending: THREE.AdditiveBlending,
+      })
+    );
+    this.world.add(this.gridMesh);
+  }
+
+  private buildMonoliths(): void {
+    const boxGeom = new THREE.BoxGeometry(2, 6, 2);
+    boxGeom.translate(0, 3, 0); // bottom face as anchor pivot
+
+    // Premium refractive glass material
     const glassMat = new THREE.MeshPhysicalMaterial({
       color: COLOR_LILAC,
       transparent: true,
       opacity: 0.85,
-      roughness: 0.12,
+      roughness: 0.15,
       metalness: 0.1,
-      transmission: 1.0,   // Glass-like transmission
-      thickness: 1.5,      // Thickness of refraction
-      ior: 1.5,            // Index of refraction
+      transmission: 1.0,
+      thickness: 1.4,
+      ior: 1.5,
       clearcoat: 1.0,
       clearcoatRoughness: 0.05,
       side: THREE.DoubleSide,
     });
 
     this.labels.forEach((label) => {
-      const mesh = new THREE.Mesh(sphereGeom, glassMat.clone());
-      // Glowing wireframe orbital shell for each glass sphere
-      const wireGeom = new THREE.IcosahedronGeometry(0.335, 1);
+      const mesh = new THREE.Mesh(boxGeom, glassMat.clone());
+      
+      // Cyber wireframe cage overlay
+      const wireGeom = new THREE.BoxGeometry(2.05, 6.05, 2.05);
+      wireGeom.translate(0, 3, 0);
       const wireMat = new THREE.MeshBasicMaterial({
         color: COLOR_OCHRE,
         wireframe: true,
         transparent: true,
-        opacity: 0.22,
+        opacity: 0.25,
         blending: THREE.AdditiveBlending,
       });
       const wire = new THREE.Mesh(wireGeom, wireMat);
       mesh.add(wire);
 
       this.world.add(mesh);
-      this.glassNodes.push(mesh);
+      this.monoliths.push(mesh);
     });
   }
 
@@ -277,10 +248,9 @@ export class MemoryScene {
       if (!AudioContextClass) return;
       this.audioCtx = new AudioContextClass();
       
-      // FM Ambient Hum drone
       this.droneOsc = this.audioCtx.createOscillator();
       this.droneOsc.type = "sawtooth";
-      this.droneOsc.frequency.setValueAtTime(55, this.audioCtx.currentTime); // low A drone
+      this.droneOsc.frequency.setValueAtTime(55, this.audioCtx.currentTime);
       
       this.droneFilter = this.audioCtx.createBiquadFilter();
       this.droneFilter.type = "lowpass";
@@ -321,209 +291,20 @@ export class MemoryScene {
     osc.stop(now + 0.13);
   }
 
-  private buildHUDAndConnections(): void {
-    // 1. HUD Grid
-    this.hudGrid = new THREE.GridHelper(16, 16, 0x8b7fc7, 0x8b7fc7);
-    this.hudGrid.position.set(0, -6, 0);
-    (this.hudGrid.material as THREE.Material).transparent = true;
-    (this.hudGrid.material as THREE.Material).opacity = 0;
-    this.world.add(this.hudGrid);
-
-    // 2. HUD Scanning Ring
-    const laserGeom = new THREE.RingGeometry(0, 6, 64);
-    const laserMat = new THREE.MeshBasicMaterial({
-      color: COLOR_OCHRE,
-      transparent: true,
-      opacity: 0,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    });
-    this.scanningLine = new THREE.Mesh(laserGeom, laserMat);
-    this.scanningLine.rotation.x = Math.PI / 2;
-    this.world.add(this.scanningLine);
-
-    // 3. Dynamic Connections
-    const connMat = new THREE.LineBasicMaterial({
-      color: COLOR_LILAC,
-      transparent: true,
-      opacity: 0,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    this.connectionsLine = new THREE.LineSegments(this.connectionsGeom, connMat);
-    this.world.add(this.connectionsLine);
-  }
-
-  private buildCoreParticles(): void {
-    const rand = mulberry32(88);
-    const colors = new Float32Array(PARTICLE_COUNT * 3);
-
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      // 1. Target Base (swirling spherical nebula)
-      const r = 1.2 + rand() * 2.8;
-      const u = rand() * Math.PI * 2;
-      const v = Math.acos(2 * rand() - 1);
-      const bx = r * Math.sin(v) * Math.cos(u);
-      const by = r * Math.sin(v) * Math.sin(u);
-      const bz = r * Math.cos(v);
-
-      this.corePositionsBase[i * 3 + 0] = bx;
-      this.corePositionsBase[i * 3 + 1] = by;
-      this.corePositionsBase[i * 3 + 2] = bz;
-
-      this.coreCurrentPositions[i * 3 + 0] = bx;
-      this.coreCurrentPositions[i * 3 + 1] = by;
-      this.coreCurrentPositions[i * 3 + 2] = bz;
-
-      // Random velocities for continuous drift
-      this.coreVelocities[i * 3 + 0] = (rand() - 0.5) * 0.4;
-      this.coreVelocities[i * 3 + 1] = (rand() - 0.5) * 0.4;
-      this.coreVelocities[i * 3 + 2] = (rand() - 0.5) * 0.4;
-
-      // 2. Target Lattice (geometric structures / clusters)
-      // Hub nodes are clustered, other nodes align to polyhedral vertices
-      const group = i % 8;
-      const theta = (group / 8) * Math.PI * 2 + rand() * 0.4;
-      const phi = (rand() - 0.5) * Math.PI * 0.8;
-      const lr = 2.0 + (i % 3) * 0.8;
-      this.corePositionsLattice[i * 3 + 0] = lr * Math.cos(phi) * Math.cos(theta);
-      this.corePositionsLattice[i * 3 + 1] = lr * Math.cos(phi) * Math.sin(theta);
-      this.corePositionsLattice[i * 3 + 2] = lr * Math.sin(phi);
-
-      // 3. Target Tunnel (traveling viewport tunnel)
-      const tAngle = rand() * Math.PI * 2;
-      const tRadius = 1.5 + rand() * 1.5;
-      const tz = (i / PARTICLE_COUNT) * 40.0 - 20.0; // spread from -20 to 20
-      this.corePositionsTunnel[i * 3 + 0] = Math.cos(tAngle) * tRadius;
-      this.corePositionsTunnel[i * 3 + 1] = Math.sin(tAngle) * tRadius;
-      this.corePositionsTunnel[i * 3 + 2] = tz;
-
-      // Colors: indigo, lilac, and ochre highlights
-      const roll = rand();
-      const col = roll > 0.85 ? COLOR_OCHRE : roll > 0.6 ? COLOR_LILAC : COLOR_INDIGO;
-      colors[i * 3 + 0] = col.r;
-      colors[i * 3 + 1] = col.g;
-      colors[i * 3 + 2] = col.b;
-    }
-
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute("position", new THREE.BufferAttribute(this.coreCurrentPositions, 3));
-    geom.setAttribute("aColor", new THREE.BufferAttribute(colors, 3));
-
-    const randoms = new Float32Array(PARTICLE_COUNT);
-    const rRandom = mulberry32(777);
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      randoms[i] = rRandom();
-    }
-    geom.setAttribute("aRandom", new THREE.BufferAttribute(randoms, 1));
-
-    const mat = new THREE.ShaderMaterial({
-      uniforms: {
-        uTime: { value: 0 },
-        uOverallOpacity: { value: 0 },
-      },
-      vertexShader: `
-        uniform float uTime;
-        attribute vec3 aColor;
-        attribute float aRandom;
-        varying vec3 vColor;
-        varying float vRandom;
-        void main() {
-          vColor = aColor;
-          vRandom = aRandom;
-          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-          gl_Position = projectionMatrix * mvPosition;
-          gl_PointSize = (14.0 / -mvPosition.z) * (0.8 + aRandom * 0.8);
-        }
-      `,
-      fragmentShader: `
-        uniform float uTime;
-        uniform float uOverallOpacity;
-        varying vec3 vColor;
-        varying float vRandom;
-        void main() {
-          vec2 coord = gl_PointCoord - vec2(0.5);
-          if (length(coord) > 0.5) discard;
-          float intensity = 1.0 - smoothstep(0.0, 0.5, length(coord));
-          float pulse = 0.72 + 0.28 * sin(uTime * 3.5 + vRandom * 20.0);
-          gl_FragColor = vec4(vColor, intensity * uOverallOpacity * pulse * 0.95);
-        }
-      `,
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-
-    this.coreParticles = new THREE.Points(geom, mat);
-    this.world.add(this.coreParticles);
-  }
-
-  private buildConcentricShells(): void {
-    // Elegant concentric outer rings (wireframes) orbiting the memory core
-    const shellRadii = [2.2, 3.5, 4.8];
-    const segments = 32;
-
-    shellRadii.forEach((r, idx) => {
-      const geom = new THREE.BufferGeometry();
-      const vertices: number[] = [];
-      
-      for (let i = 0; i <= segments; i++) {
-        const theta = (i / segments) * Math.PI * 2;
-        vertices.push(Math.cos(theta) * r, Math.sin(theta) * r, 0);
-      }
-      
-      geom.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-      
-      const mat = new THREE.LineBasicMaterial({
-        color: idx === 1 ? COLOR_OCHRE : COLOR_LILAC,
-        transparent: true,
-        opacity: 0.28,
-        blending: THREE.AdditiveBlending,
-      });
-
-      const line = new THREE.Line(geom, mat);
-      // Give them unique initial rotational angles
-      line.rotation.x = Math.random() * Math.PI;
-      line.rotation.y = Math.random() * Math.PI;
-      
-      this.world.add(line);
-      this.shells.push(line as unknown as THREE.LineSegments); // store reference
-    });
-  }
-
-  private buildSonarRings(): void {
-    // Expanding rings representing proactive sonar sweeps in Act 5
-    const ringGeom = new THREE.RingGeometry(1, 1.025, 64);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: COLOR_ALERT,
-      transparent: true,
-      opacity: 0,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    });
-
-    for (let r = 0; r < 3; r++) {
-      const ring = new THREE.Mesh(ringGeom, ringMat.clone());
-      ring.rotation.x = Math.PI / 2; // Flat horizontal plane
-      this.world.add(ring);
-      this.shockwaveRings.push(ring);
-    }
-  }
-
   private buildComposer(w: number, h: number, dpr: number): void {
     this.composer = new EffectComposer(this.renderer);
     this.composer.setPixelRatio(dpr);
     this.composer.setSize(w, h);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.95, 0.7, 0.15);
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.75, 0.7, 0.25);
     this.composer.addPass(this.bloomPass);
 
     this.grainPass = new ShaderPass({
       uniforms: {
         tDiffuse: { value: null },
         uTime: { value: 0 },
-        uGrain: { value: 0.038 },
+        uGrain: { value: 0.035 },
         uVignette: { value: 0.88 },
         uAberration: { value: 0.0002 },
       },
@@ -561,7 +342,7 @@ export class MemoryScene {
     const el = this.timer.getElapsed();
     this.grainPass.uniforms.uTime.value = el;
 
-    // Scroll speed for horizontal chromatic aberration separator
+    // Scroll Speed calculation
     const currentScrollY = progress * (typeof document !== "undefined" ? document.documentElement.scrollHeight - window.innerHeight : 1000);
     const scrollDelta = Math.abs(currentScrollY - this.lastScrollY);
     this.lastScrollY = currentScrollY;
@@ -569,268 +350,109 @@ export class MemoryScene {
     const aberrationAmount = Math.max(0.0, Math.min(0.016, this.scrollSpeed));
     this.grainPass.uniforms.uAberration.value = 0.0002 + aberrationAmount;
 
-    // Mouse Parallax (smooth tilting)
+    // Mouse Parallax
     if (this.mouse.x > -900) {
-      this.targetCameraOffset.set(this.mouse.x * 1.8, this.mouse.y * 1.8, 0);
+      this.targetCameraOffset.set(this.mouse.x * 1.5, this.mouse.y * 1.2, 0);
     } else {
       this.targetCameraOffset.set(0, 0, 0);
     }
     this.cameraOffset.lerp(this.targetCameraOffset, 0.05);
 
-    // Web Audio drone init/modulations
+    // Audio modulations
     if (!this.audioCtx && (this.mouse.x > -900 || progress > 0.001)) {
       this.initAudio();
     }
     if (this.audioCtx && this.droneOsc && this.droneFilter && this.droneGain) {
-      if (this.audioCtx.state === "suspended") {
-        this.audioCtx.resume();
-      }
+      if (this.audioCtx.state === "suspended") this.audioCtx.resume();
       const now = this.audioCtx.currentTime;
-      const targetFreq = 55 + progress * 55;
-      this.droneOsc.frequency.setTargetAtTime(targetFreq, now, 0.15);
-
-      const targetFilterFreq = 100 + this.scrollSpeed * 900 + progress * 250;
-      this.droneFilter.frequency.setTargetAtTime(targetFilterFreq, now, 0.1);
-
-      const targetGain = Math.min(0.06, 0.015 + this.scrollSpeed * 0.15);
-      this.droneGain.gain.setTargetAtTime(targetGain, now, 0.25);
+      this.droneOsc.frequency.setTargetAtTime(55 + progress * 55, now, 0.15);
+      this.droneFilter.frequency.setTargetAtTime(110 + this.scrollSpeed * 900 + progress * 200, now, 0.1);
+      this.droneGain.gain.setTargetAtTime(Math.min(0.06, 0.015 + this.scrollSpeed * 0.15), now, 0.25);
     }
 
-    // ── Spline Camera path evaluation ─────────
-    const floatX = Math.sin(el * 0.2) * 0.22;
-    const floatY = Math.cos(el * 0.18) * 0.2;
+    // Camera sits static relative to Z loop while landscape rolls
+    const floatY = Math.sin(el * 0.2) * 0.15;
+    this.camera.position.set(this.cameraOffset.x, 2.5 + floatY + this.cameraOffset.y, 10);
+    this.camera.lookAt(0, -1.0, -18);
 
-    const camPos = new THREE.Vector3();
-    if (this.cameraSpline) {
-      this.cameraSpline.getPointAt(Math.max(0, Math.min(1, progress)), camPos);
-    } else {
-      camPos.set(0, 0, 16);
-    }
+    // Dynamic grid highway scroll and curved horizon distortion
+    const gridPos = this.gridGeom.attributes.position as THREE.BufferAttribute;
+    const basePos = this.gridBasePositions;
+    const totalHighwayLen = 420;
+    const scrollOffset = (progress * totalHighwayLen) % 20;
 
-    this.camera.position.set(
-      camPos.x + floatX + this.cameraOffset.x,
-      camPos.y + floatY + this.cameraOffset.y,
-      camPos.z
-    );
-    this.camera.lookAt(0, 0, 0);
+    for (let i = 0; i < gridPos.count; i++) {
+      const bx = basePos[i * 3 + 0]!;
+      const by = basePos[i * 3 + 1]!;
+      const bz = basePos[i * 3 + 2]!;
 
-    // Rotate shells on different axes
-    this.shells.forEach((line, index) => {
-      const dir = index % 2 === 0 ? 1 : -1;
-      line.rotation.x += dt * 0.15 * (index + 1) * dir;
-      line.rotation.y += dt * 0.2 * (index + 1) * dir;
-      line.rotation.z += dt * 0.08 * (index + 1) * dir;
-      const opacity = smoothstep(0.12, 0.35, progress) * (1.0 - smoothstep(0.82, 0.95, progress));
-      (line.material as THREE.LineBasicMaterial).opacity = opacity * 0.3;
-    });
+      // Scroll grid backwards
+      let z = bz - scrollOffset;
 
-    // ── Particle layout states ─────────
-    const act2 = actProgress(progress, 0.166, 0.333);
-    const act3 = actProgress(progress, 0.333, 0.5);
-    const act4 = actProgress(progress, 0.5, 0.666);
-    const act5 = actProgress(progress, 0.666, 0.833);
-    const act6 = actProgress(progress, 0.833, 1.0);
-
-    const overallOpacity = smoothstep(0.04, 0.16, progress) * (1 - smoothstep(0.93, 1.0, progress) * 0.45);
-    const matShader = this.coreParticles.material as THREE.ShaderMaterial;
-    if (matShader.uniforms) {
-      matShader.uniforms.uTime.value = el;
-      matShader.uniforms.uOverallOpacity.value = overallOpacity * 0.95;
-    }
-
-    // Render shockwave alert rings in Act 5
-    const pulseStrength = act5 * overallOpacity;
-    for (let r = 0; r < this.shockwaveRings.length; r++) {
-      const ring = this.shockwaveRings[r]!;
-      const mat = ring.material as THREE.MeshBasicMaterial;
-      if (pulseStrength > 0.05) {
-        const t = (el * 0.72 + r * 0.33) % 1.0;
-        const ringScale = t * 13.0;
-        ring.scale.set(ringScale, ringScale, ringScale);
-        mat.opacity = (1.0 - t) * pulseStrength * 0.85;
-      } else {
-        mat.opacity = 0;
+      // Horizon bend calculations
+      let y = by;
+      if (z < -15) {
+        const dz = z + 15;
+        y += -0.04 * dz * dz;
       }
+      gridPos.setXYZ(i, bx, y - 5, z);
     }
+    gridPos.needsUpdate = true;
+    this.gridGeom.computeVertexNormals();
 
-    // Cursor Gravity calculations
+    // Position and Rise Monoliths along the grid landscape
+    this.world.updateMatrixWorld(true);
+    const overallOpacity = smoothstep(0.04, 0.16, progress) * (1 - smoothstep(0.93, 1.0, progress) * 0.45);
+    const hudOpacity = smoothstep(0.24, 0.38, progress) * (1.0 - smoothstep(0.8, 0.95, progress));
+
+    const totalMonoliths = this.labels.length;
     let hasMouseIntersection = false;
-    if (this.mouse.x > -900 && this.camera) {
+    if (this.mouse.x > -900) {
       this.raycaster.setFromCamera(this.mouse, this.camera);
-      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-      this.raycaster.ray.intersectPlane(plane, this.mouseWorldPos);
       hasMouseIntersection = true;
     }
 
-    // Update positions and velocities
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const idx = i * 3;
-      const bx = this.corePositionsBase[idx + 0]!;
-      const by = this.corePositionsBase[idx + 1]!;
-      const bz = this.corePositionsBase[idx + 2]!;
-
-      const lx = this.corePositionsLattice[idx + 0]!;
-      const ly = this.corePositionsLattice[idx + 1]!;
-      const lz = this.corePositionsLattice[idx + 2]!;
-
-      const tx = this.corePositionsTunnel[idx + 0]!;
-      const ty = this.corePositionsTunnel[idx + 1]!;
-      const tz = this.corePositionsTunnel[idx + 2]!;
-
-      // 1. Calculate base swirling position (Act 1 / fluid noise)
-      const noiseX = Math.sin(el * 0.8 + i * 0.12) * 0.15;
-      const noiseY = Math.cos(el * 0.6 + i * 0.08) * 0.15;
-      const noiseZ = Math.sin(el * 0.5 + i * 0.22) * 0.12;
-
-      let targetX = bx + noiseX;
-      let targetY = by + noiseY;
-      let targetZ = bz + noiseZ;
-
-      // 2. Act 2: Vortex Ingestion (pull in/vortex curves)
-      if (act2 > 0.01) {
-        // Curve path: Spiral vortex inwards
-        const t2 = smoothstep(0, 1, act2);
-        const spiralAngle = el * 2.0 + (i * 0.05);
-        const spiralRadius = lerp(5.0, 2.0, t2) + Math.sin(i) * 0.5;
-        const spiralX = Math.cos(spiralAngle) * spiralRadius;
-        const spiralY = Math.sin(spiralAngle) * spiralRadius;
-        const spiralZ = lerp(-6.0, 0.0, t2) + (i % 5) * 0.4;
-        
-        targetX = lerp(targetX, spiralX, t2);
-        targetY = lerp(targetY, spiralY, t2);
-        targetZ = lerp(targetZ, spiralZ, t2);
-      }
-
-      // 3. Act 3: Core Ignition Lattice
-      if (act3 > 0.01) {
-        const t3 = smoothstep(0, 1, act3);
-        targetX = lerp(targetX, lx, t3);
-        targetY = lerp(targetY, ly, t3);
-        targetZ = lerp(targetZ, lz, t3);
-      }
-
-      // 4. Act 4: Volumetric Grid Tunnel
-      if (act4 > 0.01) {
-        const t4 = smoothstep(0, 1, act4);
-        targetX = lerp(targetX, tx, t4);
-        targetY = lerp(targetY, ty, t4);
-        targetZ = lerp(targetZ, tz, t4);
-      }
-
-      // 5. Act 5: Supernova Shockwave (explosive outward expansion)
-      if (act5 > 0.01) {
-        const t5 = smoothstep(0.0, 0.5, act5) - smoothstep(0.5, 1.0, act5);
-        // Calculate radial direction vector
-        const len = Math.sqrt(targetX * targetX + targetY * targetY + targetZ * targetZ);
-        const nx = len > 0 ? targetX / len : 0;
-        const ny = len > 0 ? targetY / len : 0;
-        const nz = len > 0 ? targetZ / len : 0;
-
-        const shockDist = t5 * 6.5 * (1.0 + (i % 4) * 0.25);
-        targetX += nx * shockDist;
-        targetY += ny * shockDist;
-        targetZ += nz * shockDist;
-      }
-
-      // 6. Act 6: Cosmic Dissolve (wide starfield)
-      if (act6 > 0.01) {
-        const t6 = smoothstep(0, 1, act6);
-        const dx = (this.coreVelocities[idx + 0]!) * t6 * 15.0;
-        const dy = (this.coreVelocities[idx + 1]!) * t6 * 15.0;
-        const dz = (this.coreVelocities[idx + 2]!) * t6 * 15.0;
-        targetX += dx;
-        targetY += dy;
-        targetZ += dz;
-      }
-
-      // A. Scroll Warp / Stretch
-      const warpZ = (Math.sin(i * 0.1) * this.scrollSpeed * 6.5);
-      targetZ += warpZ * (i % 2 === 0 ? 1 : -1);
-
-      // B. Cursor Gravity Repel/Attract Field
-      if (hasMouseIntersection) {
-        const dx = targetX - this.mouseWorldPos.x;
-        const dy = targetY - this.mouseWorldPos.y;
-        const dz = targetZ - this.mouseWorldPos.z;
-        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (dist < 4.5) {
-          const repelForce = (1.0 - smoothstep(0, 4.5, dist)) * 1.6;
-          const angle = Math.atan2(dy, dx);
-          targetX += Math.cos(angle) * repelForce;
-          targetY += Math.sin(angle) * repelForce;
-          targetZ += Math.sin(i) * repelForce * 0.5;
-        }
-      }
-
-      this.coreCurrentPositions[idx + 0] = targetX;
-      this.coreCurrentPositions[idx + 1] = targetY;
-      this.coreCurrentPositions[idx + 2] = targetZ;
-    }
-    (this.coreParticles.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-
-    // C. Sweep scanning line and update HUD
-    const sweepY = Math.sin(el * 1.2) * 5.5;
-    this.scanningLine.position.y = sweepY;
-    const hudOpacity = smoothstep(0.24, 0.38, progress) * (1.0 - smoothstep(0.8, 0.95, progress));
-    (this.hudGrid.material as THREE.Material).opacity = hudOpacity * 0.05;
-    (this.scanningLine.material as THREE.Material).opacity = hudOpacity * 0.15 * (0.85 + Math.sin(el * 8.0) * 0.15);
-
-    // D. Update 3D Line Connections dynamically between label nodes
-    const connPositions: number[] = [];
-    const hubIndices = this.labels.map(l => l.idx);
-    for (let a = 0; a < hubIndices.length; a++) {
-      const idxA = hubIndices[a]! * 3;
-      const ax = this.coreCurrentPositions[idxA + 0]!;
-      const ay = this.coreCurrentPositions[idxA + 1]!;
-      const az = this.coreCurrentPositions[idxA + 2]!;
-
-      for (let b = 1; b <= 2; b++) {
-        const nextHub = hubIndices[(a + b) % hubIndices.length]!;
-        const idxB = nextHub * 3;
-        const bx = this.coreCurrentPositions[idxB + 0]!;
-        const by = this.coreCurrentPositions[idxB + 1]!;
-        const bz = this.coreCurrentPositions[idxB + 2]!;
-
-        connPositions.push(ax, ay, az);
-        connPositions.push(bx, by, bz);
-      }
-    }
-    this.connectionsGeom.setAttribute("position", new THREE.Float32BufferAttribute(connPositions, 3));
-    if (this.connectionsGeom.attributes.position) {
-      this.connectionsGeom.attributes.position.needsUpdate = true;
-    }
-    const connOpacity = smoothstep(0.28, 0.42, progress) * (1.0 - smoothstep(0.8, 0.95, progress));
-    (this.connectionsLine.material as THREE.LineBasicMaterial).opacity = connOpacity * 0.28;
-
-    // Position and transition glass nodes
-    const glassOpacity = smoothstep(0.32, 0.45, progress) * (1.0 - smoothstep(0.8, 0.95, progress));
     this.labels.forEach((label, i) => {
-      const mesh = this.glassNodes[i];
-      if (!mesh) return;
-      const idx = label.idx * 3;
-      mesh.position.set(
-        this.coreCurrentPositions[idx + 0]!,
-        this.coreCurrentPositions[idx + 1]!,
-        this.coreCurrentPositions[idx + 2]!
-      );
-      (mesh.material as THREE.MeshPhysicalMaterial).opacity = glassOpacity * 0.85;
-      mesh.rotation.y += dt * 0.35 * (1.0 + (i % 3) * 0.15);
-      mesh.rotation.z += dt * 0.2 * (1.0 + (i % 2) * 0.15);
+      const mesh = this.monoliths[i]!;
+      const side = i % 2 === 0 ? -12 : 12;
+      const initialZ = -10 - i * 15;
+
+      // Wrap monolith coordinates loop seamlessly
+      let z = initialZ + (progress * totalHighwayLen);
+      z = ((z + 100) % totalHighwayLen) - 320; // wrap between -320 and 100
+
+      // Calculate ground curve height at Z
+      let groundY = -5;
+      if (z < -15) {
+        const dz = z + 15;
+        groundY += -0.04 * dz * dz;
+      }
+
+      // Rise factor based on distance
+      const distToCam = Math.abs(z);
+      const rise = 1.0 - smoothstep(15, 80, distToCam);
+      const targetY = groundY + (rise * 5.0);
+
+      mesh.position.set(side, groundY, z);
+      mesh.scale.set(1.0, rise + 0.01, 1.0); // scale pivot up
+
+      const glassMat = mesh.material as THREE.MeshPhysicalMaterial;
+      glassMat.opacity = hudOpacity * 0.85;
 
       const wire = mesh.children[0] as THREE.Mesh;
       if (wire) {
-        (wire.material as THREE.MeshBasicMaterial).opacity = glassOpacity * 0.22;
-        wire.rotation.y -= dt * 0.5;
+        const wireMat = wire.material as THREE.MeshBasicMaterial;
+        wireMat.opacity = hudOpacity * 0.28;
       }
     });
 
-    // Raycast for node hover & audio blip trigger
+    // Raycast hover updates
     let currentHoverIdx: number | null = null;
-    if (hasMouseIntersection && this.glassNodes.length > 0) {
-      const intersects = this.raycaster.intersectObjects(this.glassNodes);
+    if (hasMouseIntersection && this.monoliths.length > 0) {
+      const intersects = this.raycaster.intersectObjects(this.monoliths);
       if (intersects.length > 0) {
         const hitMesh = intersects[0]!.object;
-        const index = this.glassNodes.indexOf(hitMesh as THREE.Mesh);
+        const index = this.monoliths.indexOf(hitMesh as THREE.Mesh);
         if (index !== -1) {
           currentHoverIdx = this.labels[index]!.idx;
         }
@@ -843,76 +465,63 @@ export class MemoryScene {
       }
     }
 
-    // ── Project HTML Metadata Labels to Screen Space ─────────
-    this.world.updateMatrixWorld(true);
+    // Project HTML labels to coordinates on top of the rising towers
     const cw = this.canvas.clientWidth || window.innerWidth;
     const ch = this.canvas.clientHeight || window.innerHeight;
     const labelAppear = smoothstep(0.34, 0.46, progress) * (1 - smoothstep(0.80, 0.95, progress));
 
-    for (let k = 0; k < this.labels.length; k++) {
-      const idx = this.labels[k]!.idx * 3;
-      this.vec.set(
-        this.coreCurrentPositions[idx + 0]!,
-        this.coreCurrentPositions[idx + 1]!,
-        this.coreCurrentPositions[idx + 2]!
-      );
+    this.labels.forEach((label, i) => {
+      const side = i % 2 === 0 ? -12 : 12;
+      const initialZ = -10 - i * 15;
+
+      let z = initialZ + (progress * totalHighwayLen);
+      z = ((z + 100) % totalHighwayLen) - 320;
+
+      let groundY = -5;
+      if (z < -15) {
+        const dz = z + 15;
+        groundY += -0.04 * dz * dz;
+      }
+
+      const distToCam = Math.abs(z);
+      const rise = 1.0 - smoothstep(15, 80, distToCam);
+      const topY = groundY + (rise * 5.5);
+
+      this.vec.set(side, topY, z);
       this.vec.applyMatrix4(this.world.matrixWorld).project(this.camera);
-      const behind = this.vec.z > 1;
-      const depthFade = 1 - smoothstep(0.55, 1.0, this.vec.z);
-      const out = this.labelScreens[k]!;
+
+      const behind = this.vec.z > 1 || z > 0 || z < -90; // hide if behind camera or too far
+      const depthFade = 1.0 - smoothstep(0.3, 0.9, this.vec.z);
+      const out = this.labelScreens[i]!;
       out.x = (this.vec.x * 0.5 + 0.5) * cw;
       out.y = (-this.vec.y * 0.5 + 0.5) * ch;
 
-      const isHovered = this.hoveredNodeIdx !== null && this.labels[k]!.idx === this.hoveredNodeIdx;
+      const isHovered = this.hoveredNodeIdx !== null && label.idx === this.hoveredNodeIdx;
       out.opacity = behind ? 0 : (isHovered ? 1.0 : labelAppear * depthFade * overallOpacity);
-    }
+    });
 
-    // ── Project HTML Mid-Edge Labels ─────────
-    const edgeLabelAppear = smoothstep(0.42, 0.54, progress) * (1 - smoothstep(0.80, 0.95, progress));
-    for (let k = 0; k < this.edgeLabels.length; k++) {
-      const eIdx = this.edgeLabels[k]!.edgeIdx;
-      const f = eIdx * 3;
-      const t = ((eIdx + 11) % HUB_COUNT) * 3; // map back to some other hub
-
-      const mx = (this.coreCurrentPositions[f + 0]! + this.coreCurrentPositions[t + 0]!) * 0.5;
-      const my = (this.coreCurrentPositions[f + 1]! + this.coreCurrentPositions[t + 1]!) * 0.5;
-      const mz = (this.coreCurrentPositions[f + 2]! + this.coreCurrentPositions[t + 2]!) * 0.5;
-      this.vec.set(mx, my, mz);
-      this.vec.applyMatrix4(this.world.matrixWorld).project(this.camera);
-
-      const behind = this.vec.z > 1;
-      const depthFade = 1 - smoothstep(0.55, 1.0, this.vec.z);
-      const out = this.edgeLabelScreens[k]!;
-      out.x = (this.vec.x * 0.5 + 0.5) * cw;
-      out.y = (-this.vec.y * 0.5 + 0.5) * ch;
-      out.opacity = behind ? 0 : edgeLabelAppear * depthFade * overallOpacity;
-    }
-
-    // ── Meaning-tokens: travel along edge projections ─────────
+    // Meaning tokens flowing along the highway lanes
     const tokenAppear = smoothstep(0.34, 0.48, progress) * (1 - smoothstep(0.80, 0.95, progress));
     for (let i = 0; i < TOKEN_COUNT; i++) {
-      this.tokenT[i]! += this.tokenSpeed[i]! * dt;
-      if (this.tokenT[i]! > 1) {
-        this.tokenT[i]! -= 1;
-        this.tokenEdge[i] = (this.tokenEdge[i]! + 1) % HUB_COUNT;
+      let tz = -10 - i * 18 + (el * 12.0); // animate forward
+      tz = ((tz + 100) % 200) - 100; // wrap Z
+
+      let groundY = -5;
+      if (tz < -15) {
+        const dz = tz + 15;
+        groundY += -0.04 * dz * dz;
       }
-      const e = this.tokenEdge[i]!;
-      const f = e * 3;
-      const t = ((e + 3) % HUB_COUNT) * 3;
-      const tt = this.tokenT[i]!;
-      this.vec.set(
-        lerp(this.coreCurrentPositions[f + 0]!, this.coreCurrentPositions[t + 0]!, tt),
-        lerp(this.coreCurrentPositions[f + 1]!, this.coreCurrentPositions[t + 1]!, tt),
-        lerp(this.coreCurrentPositions[f + 2]!, this.coreCurrentPositions[t + 2]!, tt)
-      );
+
+      const laneX = ((i % 3) - 1) * 5.0; // lane offset
+      this.vec.set(laneX, groundY + 0.5, tz);
       this.vec.applyMatrix4(this.world.matrixWorld).project(this.camera);
-      const behind = this.vec.z > 1;
-      const depthFade = 1 - smoothstep(0.6, 1.0, this.vec.z);
-      const endFade = smoothstep(0, 0.12, tt) * (1 - smoothstep(0.88, 1, tt));
+
+      const behind = this.vec.z > 1 || tz > 0 || tz < -90;
+      const depthFade = 1.0 - smoothstep(0.4, 0.95, this.vec.z);
       const out = this.tokenScreens[i]!;
       out.x = (this.vec.x * 0.5 + 0.5) * cw;
       out.y = (-this.vec.y * 0.5 + 0.5) * ch;
-      out.opacity = behind ? 0 : tokenAppear * depthFade * endFade * overallOpacity;
+      out.opacity = behind ? 0 : tokenAppear * depthFade * overallOpacity;
     }
   }
 
@@ -931,23 +540,9 @@ export class MemoryScene {
   }
 
   destroy(): void {
-    this.coreParticles.geometry.dispose();
-    (this.coreParticles.material as THREE.Material).dispose();
-    this.shells.forEach(line => {
-      line.geometry.dispose();
-      (line.material as THREE.Material).dispose();
-    });
-    this.shockwaveRings.forEach(ring => {
-      ring.geometry.dispose();
-      (ring.material as THREE.Material).dispose();
-    });
-    this.hudGrid.geometry.dispose();
-    (this.hudGrid.material as THREE.Material).dispose();
-    this.scanningLine.geometry.dispose();
-    (this.scanningLine.material as THREE.Material).dispose();
-    this.connectionsGeom.dispose();
-    (this.connectionsLine.material as THREE.Material).dispose();
-    this.glassNodes.forEach(mesh => {
+    this.gridGeom.dispose();
+    (this.gridMesh.material as THREE.Material).dispose();
+    this.monoliths.forEach(mesh => {
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
       const wire = mesh.children[0] as THREE.Mesh;
