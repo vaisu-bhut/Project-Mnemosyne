@@ -439,7 +439,7 @@ export function Landing() {
       <div className="landing-panels">
         {/* Act 1 */}
         <div ref={setPanel(0)} className="landing-panel">
-          <div className="landing-col console-glass-panel">
+          <div className="landing-col">
             <p className="landing-kicker">
               <span className="landing-num">{num(1)}</span>
               <span aria-hidden className="size-1.5 rounded-full bg-[var(--ochre)] animate-subtle-pulse" />
@@ -460,7 +460,7 @@ export function Landing() {
 
         {/* Act 2 */}
         <div ref={setPanel(1)} className="landing-panel">
-          <div className="landing-col console-glass-panel">
+          <div className="landing-col">
             <p className="landing-kicker">
               <span className="landing-num">{num(2)}</span> Reads
             </p>
@@ -478,7 +478,7 @@ export function Landing() {
 
         {/* Act 3 */}
         <div ref={setPanel(2)} className="landing-panel">
-          <div className="landing-col console-glass-panel">
+          <div className="landing-col">
             <p className="landing-kicker">
               <span className="landing-num">{num(3)}</span> Remembers
             </p>
@@ -495,7 +495,7 @@ export function Landing() {
         {/* Act 4 */}
         <div ref={setPanel(3)} className="landing-panel">
           <div className="landing-split">
-            <div className="landing-col console-glass-panel">
+            <div className="landing-col">
               <p className="landing-kicker">
                 <span className="landing-num">{num(4)}</span> Cites
               </p>
@@ -510,6 +510,10 @@ export function Landing() {
               </p>
             </div>
             <div className="trace-card">
+              <span className="hud-corner hud-tl" />
+              <span className="hud-corner hud-tr" />
+              <span className="hud-corner hud-bl" />
+              <span className="hud-corner hud-br" />
               <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-primary font-mono">
                 Extraction trace · Sara Lin
               </p>
@@ -534,7 +538,7 @@ export function Landing() {
         {/* Act 5 */}
         <div ref={setPanel(4)} className="landing-panel">
           <div className="landing-split">
-            <div className="landing-col console-glass-panel">
+            <div className="landing-col">
               <p className="landing-kicker">
                 <span className="landing-num">{num(5)}</span> Interrupts
               </p>
@@ -547,6 +551,10 @@ export function Landing() {
               </p>
             </div>
             <div className="nudge-card font-mono">
+              <span className="hud-corner hud-tl" />
+              <span className="hud-corner hud-tr" />
+              <span className="hud-corner hud-bl" />
+              <span className="hud-corner hud-br" />
               <div className="flex items-start gap-3">
                 <span aria-hidden className="mt-1 size-2 rounded-full bg-[var(--ochre)] shadow-[0_0_12px_var(--ochre)] animate-glow-pulse" />
                 <div>
@@ -567,7 +575,7 @@ export function Landing() {
 
         {/* Act 6 */}
         <div ref={setPanel(5)} className="landing-panel">
-          <div className="landing-col landing-col--center console-glass-panel">
+          <div className="landing-col landing-col--center">
             <p className="landing-kicker justify-center">
               <span className="landing-num">{num(6)}</span> The thesis
             </p>

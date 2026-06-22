@@ -408,9 +408,7 @@
     pointer-events: none;
   }
 
-  /* Readability scrim. Desktop: strong cream on the LEFT (where text lives),
-   * clearing to transparent on the right (where the graph lives) + a soft
-   * bottom fade. Mobile: a gentler full veil since text overlays the graph. */
+  /* Softened readability scrim to keep grid highway fully visible */
   .landing-scrim {
     position: fixed;
     inset: 0;
@@ -419,17 +417,10 @@
     background:
       linear-gradient(
         to right,
-        var(--background) 0%,
-        oklch(0.935 0.022 88 / 94%) 26%,
-        oklch(0.935 0.022 88 / 40%) 52%,
-        transparent 72%
-      ),
-      linear-gradient(to top, oklch(0.935 0.022 88 / 55%) 0%, transparent 22%);
-  }
-  @media (max-width: 899px) {
-    .landing-scrim {
-      background: oklch(0.935 0.022 88 / 72%);
-    }
+        oklch(0.935 0.022 88 / 65%) 0%,
+        oklch(0.935 0.022 88 / 25%) 30%,
+        transparent 65%
+      );
   }
 
   /* Top scroll-progress bar. */
@@ -751,20 +742,32 @@
     box-shadow: 0 0 10px var(--ochre);
   }
 
-  /* In-scene HTML "cards". */
+  /* In-scene HTML "cards" with transparent glassmorphism */
   .trace-card,
   .nudge-card {
     position: relative;
     z-index: 1;
     border: 1px solid var(--border);
-    background: oklch(0.97 0.01 88 / 88%);
-    border-radius: var(--radius);
+    background: oklch(0.97 0.01 88 / 45%);
+    border-radius: 4px;
     padding: 1.25rem 1.4rem;
-    box-shadow:
-      0 1px 2px oklch(var(--shadow-ink) / 8%),
-      0 24px 50px -12px oklch(var(--shadow-ink) / 22%);
-    backdrop-filter: blur(10px);
+    box-shadow: none;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
+
+  /* Corner tick brackets for technical HUD boxes */
+  .hud-corner {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border: 1px solid var(--ochre);
+    pointer-events: none;
+  }
+  .hud-tl { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+  .hud-tr { top: -1px; right: -1px; border-left: none; border-bottom: none; }
+  .hud-bl { bottom: -1px; left: -1px; border-right: none; border-top: none; }
+  .hud-br { bottom: -1px; right: -1px; border-left: none; border-top: none; }
 
   /* Big CTA. */
   .cta-button {
@@ -920,14 +923,13 @@
   }
   
   .console-glass-panel {
-    border: 1px solid var(--border);
-    background: oklch(0.965 0.014 88 / 90%);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-radius: 8px;
+    border: 1px dashed var(--border);
+    background: oklch(0.965 0.014 88 / 30%);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 4px;
     padding: 1.6rem 2rem;
-    box-shadow: 
-      0 1px 2px oklch(var(--shadow-ink) / 5%),
-      0 24px 60px -15px oklch(var(--shadow-ink) / 25%);
+    box-shadow: none;
+    border-left: 2px solid var(--ochre);
   }
 }
