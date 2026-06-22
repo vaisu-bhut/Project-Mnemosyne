@@ -91,6 +91,13 @@ export class MemoryScene {
   private lastScrollY = 0;
   private scrollSpeed = 0;
   private vec = new THREE.Vector3();
+  private mouseWorldPos = new THREE.Vector3();
+
+  // HUD & Connections
+  private hudGrid!: THREE.GridHelper;
+  private scanningLine!: THREE.Mesh;
+  private connectionsGeom = new THREE.BufferGeometry();
+  private connectionsLine!: THREE.LineSegments;
 
   // Metadata labels mapped to index nodes
   readonly labels: { idx: number; text: string; detail?: string; kind: "self" | "person" | "category" | "episode" | "fact" | "source" }[] = [
@@ -199,7 +206,41 @@ export class MemoryScene {
     this.buildCoreParticles();
     this.buildConcentricShells();
     this.buildSonarRings();
+    this.buildHUDAndConnections();
     this.buildComposer(w, h, dpr);
+  }
+
+  private buildHUDAndConnections(): void {
+    // 1. HUD Grid
+    this.hudGrid = new THREE.GridHelper(16, 16, 0x8b7fc7, 0x8b7fc7);
+    this.hudGrid.position.set(0, -6, 0);
+    (this.hudGrid.material as THREE.Material).transparent = true;
+    (this.hudGrid.material as THREE.Material).opacity = 0;
+    this.world.add(this.hudGrid);
+
+    // 2. HUD Scanning Ring
+    const laserGeom = new THREE.RingGeometry(0, 6, 64);
+    const laserMat = new THREE.MeshBasicMaterial({
+      color: COLOR_OCHRE,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    this.scanningLine = new THREE.Mesh(laserGeom, laserMat);
+    this.scanningLine.rotation.x = Math.PI / 2;
+    this.world.add(this.scanningLine);
+
+    // 3. Dynamic Connections
+    const connMat = new THREE.LineBasicMaterial({
+      color: COLOR_LILAC,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.connectionsLine = new THREE.LineSegments(this.connectionsGeom, connMat);
+    this.world.add(this.connectionsLine);
   }
 
   private buildCoreParticles(): void {
@@ -453,6 +494,15 @@ export class MemoryScene {
       }
     }
 
+    // Cursor Gravity calculations
+    let hasMouseIntersection = false;
+    if (this.mouse.x > -900 && this.camera) {
+      this.raycaster.setFromCamera(this.mouse, this.camera);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+      this.raycaster.ray.intersectPlane(plane, this.mouseWorldPos);
+      hasMouseIntersection = true;
+    }
+
     // Update positions and velocities
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const idx = i * 3;
@@ -534,11 +584,64 @@ export class MemoryScene {
         targetZ += dz;
       }
 
+      // A. Scroll Warp / Stretch
+      const warpZ = (Math.sin(i * 0.1) * this.scrollSpeed * 6.5);
+      targetZ += warpZ * (i % 2 === 0 ? 1 : -1);
+
+      // B. Cursor Gravity Repel/Attract Field
+      if (hasMouseIntersection) {
+        const dx = targetX - this.mouseWorldPos.x;
+        const dy = targetY - this.mouseWorldPos.y;
+        const dz = targetZ - this.mouseWorldPos.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist < 4.5) {
+          const repelForce = (1.0 - smoothstep(0, 4.5, dist)) * 1.6;
+          const angle = Math.atan2(dy, dx);
+          targetX += Math.cos(angle) * repelForce;
+          targetY += Math.sin(angle) * repelForce;
+          targetZ += Math.sin(i) * repelForce * 0.5;
+        }
+      }
+
       this.coreCurrentPositions[idx + 0] = targetX;
       this.coreCurrentPositions[idx + 1] = targetY;
       this.coreCurrentPositions[idx + 2] = targetZ;
     }
     (this.coreParticles.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+
+    // C. Sweep scanning line and update HUD
+    const sweepY = Math.sin(el * 1.2) * 5.5;
+    this.scanningLine.position.y = sweepY;
+    const hudOpacity = smoothstep(0.24, 0.38, progress) * (1.0 - smoothstep(0.8, 0.95, progress));
+    (this.hudGrid.material as THREE.Material).opacity = hudOpacity * 0.05;
+    (this.scanningLine.material as THREE.Material).opacity = hudOpacity * 0.15 * (0.85 + Math.sin(el * 8.0) * 0.15);
+
+    // D. Update 3D Line Connections dynamically between label nodes
+    const connPositions: number[] = [];
+    const hubIndices = this.labels.map(l => l.idx);
+    for (let a = 0; a < hubIndices.length; a++) {
+      const idxA = hubIndices[a]! * 3;
+      const ax = this.coreCurrentPositions[idxA + 0]!;
+      const ay = this.coreCurrentPositions[idxA + 1]!;
+      const az = this.coreCurrentPositions[idxA + 2]!;
+
+      for (let b = 1; b <= 2; b++) {
+        const nextHub = hubIndices[(a + b) % hubIndices.length]!;
+        const idxB = nextHub * 3;
+        const bx = this.coreCurrentPositions[idxB + 0]!;
+        const by = this.coreCurrentPositions[idxB + 1]!;
+        const bz = this.coreCurrentPositions[idxB + 2]!;
+
+        connPositions.push(ax, ay, az);
+        connPositions.push(bx, by, bz);
+      }
+    }
+    this.connectionsGeom.setAttribute("position", new THREE.Float32BufferAttribute(connPositions, 3));
+    if (this.connectionsGeom.attributes.position) {
+      this.connectionsGeom.attributes.position.needsUpdate = true;
+    }
+    const connOpacity = smoothstep(0.28, 0.42, progress) * (1.0 - smoothstep(0.8, 0.95, progress));
+    (this.connectionsLine.material as THREE.LineBasicMaterial).opacity = connOpacity * 0.28;
 
     // ── Project HTML Metadata Labels to Screen Space ─────────
     this.world.updateMatrixWorld(true);
@@ -638,6 +741,12 @@ export class MemoryScene {
       ring.geometry.dispose();
       (ring.material as THREE.Material).dispose();
     });
+    this.hudGrid.geometry.dispose();
+    (this.hudGrid.material as THREE.Material).dispose();
+    this.scanningLine.geometry.dispose();
+    (this.scanningLine.material as THREE.Material).dispose();
+    this.connectionsGeom.dispose();
+    (this.connectionsLine.material as THREE.Material).dispose();
     this.composer.dispose();
     this.renderer.dispose();
   }
