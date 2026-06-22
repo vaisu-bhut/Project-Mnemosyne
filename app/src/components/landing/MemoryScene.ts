@@ -121,6 +121,14 @@ export class MemoryScene {
   private scrollSpeed = 0;
   private vec = new THREE.Vector3();
 
+  // Drag-to-Rotate Variables
+  private isDragging = false;
+  private previousMousePosition = { x: 0, y: 0 };
+  private userRotationY = 0;
+  private userRotationX = 0;
+  private targetUserRotationY = 0;
+  private targetUserRotationX = 0;
+
   // Metadata labels mapped to index nodes
   readonly labels: { idx: number; text: string; detail?: string; kind: "self" | "person" | "category" | "episode" | "fact" | "source" }[] = [
     { idx: 0, text: "You", detail: "Active Brain Context", kind: "self" },
@@ -242,7 +250,79 @@ export class MemoryScene {
         speed: 0.22 + Math.random() * 0.25
       });
     }
+
+    // Attach drag-to-rotate event listeners
+    window.addEventListener("mousedown", this.onMouseDown);
+    window.addEventListener("mousemove", this.onMouseMove);
+    window.addEventListener("mouseup", this.onMouseUp);
+
+    this.canvas.addEventListener("touchstart", this.onTouchStart, { passive: true });
+    window.addEventListener("touchmove", this.onTouchMove, { passive: false });
+    window.addEventListener("touchend", this.onTouchEnd);
   }
+
+  // Mouse Drag Handlers
+  private onMouseDown = (e: MouseEvent): void => {
+    // Ignore drag if clicking on interactive elements
+    const target = e.target as HTMLElement;
+    if (target.closest("button") || target.closest("a") || target.closest("input") || target.closest(".trace-card") || target.closest(".nudge-card")) {
+      return;
+    }
+    this.isDragging = true;
+    this.previousMousePosition = { x: e.clientX, y: e.clientY };
+    if (typeof document !== "undefined") {
+      document.body.style.cursor = "grabbing";
+    }
+  };
+
+  private onMouseMove = (e: MouseEvent): void => {
+    if (!this.isDragging) return;
+    const deltaX = e.clientX - this.previousMousePosition.x;
+    const deltaY = e.clientY - this.previousMousePosition.y;
+    
+    this.targetUserRotationY += deltaX * 0.007;
+    this.targetUserRotationX += deltaY * 0.007;
+    
+    // Clamp X rotation to avoid flipping
+    this.targetUserRotationX = Math.max(-Math.PI / 3.5, Math.min(Math.PI / 3.5, this.targetUserRotationX));
+    
+    this.previousMousePosition = { x: e.clientX, y: e.clientY };
+  };
+
+  private onMouseUp = (): void => {
+    this.isDragging = false;
+    if (typeof document !== "undefined") {
+      document.body.style.cursor = "";
+    }
+  };
+
+  // Touch Handlers
+  private onTouchStart = (e: TouchEvent): void => {
+    if (e.touches.length === 1) {
+      const target = e.target as HTMLElement;
+      if (target.closest("button") || target.closest("a") || target.closest("input") || target.closest(".trace-card") || target.closest(".nudge-card")) {
+        return;
+      }
+      this.isDragging = true;
+      this.previousMousePosition = { x: e.touches[0]!.clientX, y: e.touches[0]!.clientY };
+    }
+  };
+
+  private onTouchMove = (e: TouchEvent): void => {
+    if (!this.isDragging || e.touches.length !== 1) return;
+    const deltaX = e.touches[0]!.clientX - this.previousMousePosition.x;
+    const deltaY = e.touches[0]!.clientY - this.previousMousePosition.y;
+    
+    this.targetUserRotationY += deltaX * 0.009;
+    this.targetUserRotationX += deltaY * 0.009;
+    this.targetUserRotationX = Math.max(-Math.PI / 3.5, Math.min(Math.PI / 3.5, this.targetUserRotationX));
+    
+    this.previousMousePosition = { x: e.touches[0]!.clientX, y: e.touches[0]!.clientY };
+  };
+
+  private onTouchEnd = (): void => {
+    this.isDragging = false;
+  };
 
   private generateNodePositions(): void {
     const total = this.labels.length;
@@ -377,7 +457,7 @@ export class MemoryScene {
         ior: 1.4,
         clearcoat: 1.0,
         emissive: color,
-        emissiveIntensity: 0.65,
+        emissiveIntensity: 0.3, // Clean, elegant, constant glow
       });
 
       const mesh = new THREE.Mesh(sphereGeom, mat);
@@ -558,13 +638,17 @@ export class MemoryScene {
     const aberrationAmount = Math.max(0.0, Math.min(0.018, this.scrollSpeed));
     this.grainPass.uniforms.uAberration.value = 0.0002 + aberrationAmount;
 
-    // Mouse Parallax Offset
-    if (this.mouse.x > -900) {
-      this.targetCameraOffset.set(this.mouse.x * 1.8, this.mouse.y * 1.4, 0);
+    // Mouse Parallax Offset (ignored during manual drag)
+    if (!this.isDragging) {
+      if (this.mouse.x > -900) {
+        this.targetCameraOffset.set(this.mouse.x * 1.8, this.mouse.y * 1.4, 0);
+      } else {
+        this.targetCameraOffset.set(0, 0, 0);
+      }
+      this.cameraOffset.lerp(this.targetCameraOffset, 0.05);
     } else {
-      this.targetCameraOffset.set(0, 0, 0);
+      this.cameraOffset.lerp(new THREE.Vector3(0, 0, 0), 0.1);
     }
-    this.cameraOffset.lerp(this.targetCameraOffset, 0.05);
 
     // Audio modulations based on scrolling speed & depth
     if (!this.audioCtx && (this.mouse.x > -900 || progress > 0.001)) {
@@ -585,8 +669,13 @@ export class MemoryScene {
     this.camera.position.copy(targetCam).add(this.cameraOffset);
     this.camera.lookAt(targetLook);
 
-    // Rotate the neural brain network over time
-    this.brainGroup.rotation.y = el * 0.085;
+    // Smoothly apply manual user drag rotation to the brain network
+    this.userRotationY = lerp(this.userRotationY, this.targetUserRotationY, 0.1);
+    this.userRotationX = lerp(this.userRotationX, this.targetUserRotationX, 0.1);
+
+    // Combine ambient rotation with drag rotation
+    this.brainGroup.rotation.y = el * 0.045 + this.userRotationY;
+    this.brainGroup.rotation.x = this.userRotationX;
     
     // Rotate scanner HUD rings
     if (this.ring1) {
@@ -597,14 +686,6 @@ export class MemoryScene {
       this.ring2.rotation.x = el * 0.09;
     }
 
-    // Pulse node intensities
-    this.nodeMeshes.forEach((mesh, i) => {
-      const label = this.labels[i]!;
-      const mat = mesh.material as THREE.MeshPhysicalMaterial;
-      const pulse = 1.0 + 0.15 * Math.sin(el * 3.0 + i);
-      mat.emissiveIntensity = 0.55 * pulse;
-    });
-
     // Update coordinates and opacity for HTML Labels
     const cw = this.canvas.clientWidth || window.innerWidth;
     const ch = this.canvas.clientHeight || window.innerHeight;
@@ -613,7 +694,7 @@ export class MemoryScene {
 
     // Check Raycast hovers
     let hasMouseIntersection = false;
-    if (this.mouse.x > -900) {
+    if (this.mouse.x > -900 && !this.isDragging) {
       this.raycaster.setFromCamera(this.mouse, this.camera);
       hasMouseIntersection = true;
     }
@@ -722,6 +803,16 @@ export class MemoryScene {
     if (this.audioCtx) {
       this.audioCtx.close();
     }
+    
+    // Remove drag-to-rotate event listeners
+    window.removeEventListener("mousedown", this.onMouseDown);
+    window.removeEventListener("mousemove", this.onMouseMove);
+    window.removeEventListener("mouseup", this.onMouseUp);
+
+    this.canvas.removeEventListener("touchstart", this.onTouchStart);
+    window.removeEventListener("touchmove", this.onTouchMove);
+    window.removeEventListener("touchend", this.onTouchEnd);
+
     this.composer.dispose();
     this.renderer.dispose();
   }
