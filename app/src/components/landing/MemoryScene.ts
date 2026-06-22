@@ -83,13 +83,14 @@ const edgePairs: [number, number][] = [
 
 // Orchestrated camera sweep keyframes for Acts 1-6
 const keyframes: Keyframe[] = [
-  { cam: new THREE.Vector3(0, 2.2, 11), look: new THREE.Vector3(0, 0.3, 0) },     // Act 1: Overview
-  { cam: new THREE.Vector3(3.5, -1.2, 6.5), look: new THREE.Vector3(0, -1.8, 0) },  // Act 2: Sources
-  { cam: new THREE.Vector3(-6.5, 2.5, 8.5), look: new THREE.Vector3(0, 0.4, 0) },   // Act 3: Graph
-  { cam: new THREE.Vector3(5.5, 1.6, 2.2), look: new THREE.Vector3(2.5, 0.8, -1.2) }, // Act 4: Cites (focus Sara Lin)
-  { cam: new THREE.Vector3(-0.8, 3.2, 4.2), look: new THREE.Vector3(1.8, 1.4, -0.6) }, // Act 5: Interrupts (focus Aurora Commitment)
-  { cam: new THREE.Vector3(0, 8.0, 12.5), look: new THREE.Vector3(0, -0.4, 0) }     // Act 6: Outro / Thesis
+  { cam: new THREE.Vector3(0, 1.8, 8.2), look: new THREE.Vector3(0, 0.3, 0) },     // Act 1: Overview (zoomed in)
+  { cam: new THREE.Vector3(2.8, -1.0, 5.0), look: new THREE.Vector3(0, -1.5, 0) },  // Act 2: Sources
+  { cam: new THREE.Vector3(-4.8, 1.8, 6.0), look: new THREE.Vector3(0, 0.4, 0) },   // Act 3: Graph (closer)
+  { cam: new THREE.Vector3(4.2, 1.2, 1.6), look: new THREE.Vector3(2.5, 0.8, -1.2) }, // Act 4: Cites (focus Sara Lin)
+  { cam: new THREE.Vector3(-0.6, 2.6, 3.2), look: new THREE.Vector3(1.8, 1.4, -0.6) }, // Act 5: Interrupts (focus Aurora Commitment)
+  { cam: new THREE.Vector3(0, 6.5, 9.5), look: new THREE.Vector3(0, -0.4, 0) }     // Act 6: Outro / Thesis
 ];
+
 
 export class MemoryScene {
   private renderer!: THREE.WebGLRenderer;

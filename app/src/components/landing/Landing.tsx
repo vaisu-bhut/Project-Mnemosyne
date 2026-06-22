@@ -131,6 +131,9 @@ export function Landing() {
   const [hoveredLabelIndex, setHoveredLabelIndex] = useState<number | null>(null);
   const hoveredLabelIndexRef = useRef<number | null>(null);
 
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -276,10 +279,28 @@ export function Landing() {
   const activeLogCount = Math.floor(scrollProgress * ALL_TELEMETRY_LOGS.length) + 1;
   const visibleLogs = ALL_TELEMETRY_LOGS.slice(Math.max(0, activeLogCount - 6), activeLogCount);
 
+  // Dynamic background focus-fade calculator: dims background slightly when viewing text display acts
+  const actIndex = scrollProgress * 5;
+  const distanceToAct = Math.abs(actIndex - Math.round(actIndex));
+  const focusFactor = Math.max(0, 1.0 - distanceToAct * 2.5); // 1.0 when settled on Act, 0.0 in scroll transitions
+
   return (
     <div className={prefersReduced ? "landing-root landing-stacked" : "landing-root landing-pinned"}>
       <canvas ref={canvasRef} aria-hidden className="landing-canvas" />
-      <div aria-hidden className="landing-scrim" />
+      
+      {/* Readability scrim: dynamically dims the background scene when text is active */}
+      <div 
+        aria-hidden 
+        className="landing-scrim transition-all duration-300"
+        style={{
+          background: `linear-gradient(
+            to right,
+            oklch(0.935 0.022 88 / ${(65 + focusFactor * 20).toFixed(0)}%) 0%,
+            oklch(0.935 0.022 88 / ${(25 + focusFactor * 20).toFixed(0)}%) 30%,
+            oklch(0.935 0.022 88 / ${(focusFactor * 16).toFixed(0)}%) 100%
+          )`
+        }}
+      />
 
       {/* Top progress bar. */}
       <div aria-hidden className="landing-progress">
@@ -293,9 +314,41 @@ export function Landing() {
           <span aria-hidden className="h-3 w-px bg-border hidden sm:block" />
           <span className="hidden sm:inline text-muted-foreground text-[9px]">LATENCY: 14MS</span>
         </div>
-        <div className="console-indicator font-mono text-[9px]">
-          <span className="console-indicator-dot" />
-          <span>STATUS: CORE_ACTIVE</span>
+        
+        <div className="flex items-center gap-3 font-mono text-[10px]">
+          <div className="console-indicator hidden sm:flex">
+            <span className="console-indicator-dot" />
+            <span>STATUS: CORE_ACTIVE</span>
+          </div>
+          
+          {/* Hidable Sidebar drop down button */}
+          <div className="relative">
+            <button 
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              className="px-2.5 py-1 border border-border rounded text-[9.5px] font-bold hover:bg-accent btn-press uppercase tracking-wider flex items-center gap-1.5 cursor-pointer text-foreground bg-[var(--background)]"
+            >
+              <span>HUD OPTIONS</span>
+              <span className="text-[7.5px] transition-transform duration-200" style={{ transform: isDropdownOpen ? "rotate(180deg)" : "rotate(0deg)" }}>▼</span>
+            </button>
+            {isDropdownOpen && (
+              <>
+                {/* Click outside overlay to dismiss dropdown */}
+                <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)} />
+                <div className="absolute right-0 mt-2 w-44 glass border border-border rounded shadow-ink-deep p-1.5 flex flex-col gap-0.5 z-50 text-[9.5px] font-mono">
+                  <button
+                    onClick={() => {
+                      setIsSidebarVisible(!isSidebarVisible);
+                      setIsDropdownOpen(false);
+                    }}
+                    className="w-full text-left px-2 py-1.5 hover:bg-accent rounded flex items-center justify-between cursor-pointer text-foreground"
+                  >
+                    <span>TELEMETRY PANEL</span>
+                    <span className="font-bold text-primary">{isSidebarVisible ? "[ON]" : "[OFF]"}</span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -318,7 +371,7 @@ export function Landing() {
 
       {/* ── Cyber HUD Sidebar Telemetry ── */}
       {!prefersReduced && (
-        <div className="console-sidebar-right hidden lg:flex">
+        <div className={`console-sidebar-right hidden lg:flex transition-all duration-300 ease-in-out ${isSidebarVisible ? 'translate-x-0 opacity-100' : 'translate-x-[340px] opacity-0 pointer-events-none'}`}>
           {/* Diagnostic Metrics */}
           <div className="console-sidebar-box">
             <div className="console-sidebar-title">
@@ -421,7 +474,7 @@ export function Landing() {
       </div>
 
       {/* Right-rail act dots. */}
-      <nav aria-label="Sections" className="fixed right-[340px] top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-3 lg:flex">
+      <nav aria-label="Sections" className={`fixed top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-3 lg:flex transition-[right] duration-300 ease-in-out ${isSidebarVisible ? 'right-[340px]' : 'right-8'}`}>
         {ACT_LABELS.map((label, i) => (
           <button
             key={label}
