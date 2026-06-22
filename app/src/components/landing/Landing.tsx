@@ -18,6 +18,26 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 const ACTS = 6;
 const ACT_LABELS = ["Trust", "Reads", "Remembers", "Cites", "Interrupts", "Thesis"];
 
+const ALL_TELEMETRY_LOGS = [
+  "INIT // establishing memory bridge connection...",
+  "AUTH // user verified (local credentials)",
+  "INGESTION // monitoring Gmail inbox (1.2k unread)",
+  "INGESTION // Cal sync established: 85 meetings parsed",
+  "DB // 48 episodes, 12 contacts mapped to primary categories",
+  "GRAPH // clustering node relations based on co-occurrence...",
+  "RESOLVE // Sara Lin realtor fact reinforced (confidence: 0.94)",
+  "VORTEX // ingestion pipeline active. processing emails...",
+  "VORTEX // local markdown notes synchronized (31 files)",
+  "GRID // lattice ignition sequence initiated...",
+  "GRID // core ignition success. bloomPass = 0.95",
+  "LATTICE // 28 active label nodes projected to screen",
+  "TUNNEL // portal entrance: dolly camera engaged",
+  "FLY-THROUGH // parsing inside core dimensions...",
+  "SUPERNOVA // warning: commitment proximity detected!",
+  "SUPERNOVA // push alert: Aurora draft due in 2 days",
+  "DISSOLVE // starfield collapse. cooling engine..."
+];
+
 /** Mirrors MemoryScene.labels (same order) so chips can render before the scene
  * loads; positions come from scene.labelScreens by index at runtime. */
 const LANDING_LABELS: { text: string; detail?: string; kind: "self" | "person" | "category" | "episode" | "fact" | "source" }[] = [
@@ -107,6 +127,9 @@ export function Landing() {
   const { status } = useAuth();
   const isAuthed = status === "authenticated";
   const [prefersReduced, setPrefersReduced] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [hoveredLabelIndex, setHoveredLabelIndex] = useState<number | null>(null);
+  const hoveredLabelIndexRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -130,6 +153,7 @@ export function Landing() {
     };
 
     const paint = () => {
+      setScrollProgress(progress);
       // Panels: cross-fade + slide.
       for (let i = 0; i < ACTS; i++) {
         const el = panelRefs.current[i];
@@ -147,6 +171,17 @@ export function Landing() {
       }
       // Graph label chips + traveling meaning-tokens from projected coords.
       if (scene) {
+        // Track hover state from WebGL
+        const sceneHovered = (scene as any).hoveredNodeIdx;
+        let matchedIndex: number | null = null;
+        if (sceneHovered !== null) {
+          matchedIndex = (scene as any).labels.findIndex((label: any) => label.idx === sceneHovered);
+        }
+        if (matchedIndex !== hoveredLabelIndexRef.current) {
+          hoveredLabelIndexRef.current = matchedIndex;
+          setHoveredLabelIndex(matchedIndex);
+        }
+
         const ls = scene.labelScreens;
         for (let i = 0; i < labelRefs.current.length; i++) {
           const el = labelRefs.current[i];
@@ -238,6 +273,9 @@ export function Landing() {
   };
   const num = (n: number) => String(n).padStart(2, "0");
 
+  const activeLogCount = Math.floor(scrollProgress * ALL_TELEMETRY_LOGS.length) + 1;
+  const visibleLogs = ALL_TELEMETRY_LOGS.slice(Math.max(0, activeLogCount - 6), activeLogCount);
+
   return (
     <div className={prefersReduced ? "landing-root landing-stacked" : "landing-root landing-pinned"}>
       <canvas ref={canvasRef} aria-hidden className="landing-canvas" />
@@ -248,16 +286,73 @@ export function Landing() {
         <div ref={barRef} className="landing-progress-fill" />
       </div>
 
-      {/* Top bar. */}
-      <header className="fixed inset-x-0 top-0 z-30 flex items-center justify-between px-6 py-5 md:px-10">
-        <span className="text-serif text-[18px] font-semibold italic tracking-tight">Mnemosyne</span>
-        <Link
-          href={isAuthed ? "/app" : "/login"}
-          className="text-[12px] font-semibold uppercase tracking-[0.18em] text-muted-foreground hover-underline hover:text-foreground"
-        >
-          {isAuthed ? "Open" : "Sign in"}
-        </Link>
-      </header>
+      {/* ── Cyber HUD Header bar ── */}
+      <div className="console-hud-bar console-header">
+        <div className="flex items-center gap-4 font-mono">
+          <span className="font-bold text-[11px] tracking-[0.2em] text-foreground">MNEMOSYNE // SYSTEM CONSOLE</span>
+          <span aria-hidden className="h-3 w-px bg-border hidden sm:block" />
+          <span className="hidden sm:inline text-muted-foreground text-[9px]">LATENCY: 14MS</span>
+        </div>
+        <div className="console-indicator font-mono text-[9px]">
+          <span className="console-indicator-dot" />
+          <span>STATUS: CORE_ACTIVE</span>
+        </div>
+      </div>
+
+      {/* ── Cyber HUD Footer bar ── */}
+      <div className="console-hud-bar console-footer">
+        <div className="flex items-center gap-4 font-mono text-[9px]">
+          <span>COORDINATE SCAN: {(scrollProgress * 100).toFixed(0)}%</span>
+          <span aria-hidden className="h-3 w-px bg-border hidden md:block" />
+          <span className="hidden md:inline">AUDIO DRONE: {(55 + scrollProgress * 55).toFixed(0)}HZ</span>
+        </div>
+        <div className="font-mono text-[9px]">
+          <Link
+            href={ctaHref}
+            className="font-bold uppercase tracking-[0.16em] text-primary hover-underline hover:text-foreground"
+          >
+            {ctaLabel}
+          </Link>
+        </div>
+      </div>
+
+      {/* ── Cyber HUD Sidebar Telemetry ── */}
+      {!prefersReduced && (
+        <div className="console-sidebar-right hidden lg:flex">
+          {/* Diagnostic Metrics */}
+          <div className="console-sidebar-box">
+            <div className="console-sidebar-title">
+              <span>CORE STATS</span>
+              <span className="text-[8px] opacity-75">V.09</span>
+            </div>
+            <div className="grid grid-cols-2 gap-y-2 text-[9px] uppercase tracking-wider text-muted-foreground font-mono">
+              <div>CPU CORES:</div>
+              <div className="text-right text-foreground">08 / ACTIVE</div>
+              <div>GPU ENG:</div>
+              <div className="text-right text-foreground">THREE.JS / SHADER</div>
+              <div>NEBULA QTY:</div>
+              <div className="text-right text-foreground">3,500 PTS</div>
+              <div>BLOOM PASS:</div>
+              <div className="text-right text-foreground">0.95 RES</div>
+            </div>
+          </div>
+
+          {/* Telemetry Logs stream */}
+          <div className="console-sidebar-box flex-1 flex flex-col min-h-0">
+            <div className="console-sidebar-title">
+              <span>TELEMETRY STREAM</span>
+              <span className="text-primary animate-subtle-pulse">● LIVE</span>
+            </div>
+            <div className="console-log-stream flex-1 overflow-hidden font-mono text-[8.5px]">
+              {visibleLogs.map((log, idx) => (
+                <div key={idx} className="console-log-line text-muted-foreground whitespace-pre-wrap">
+                  <span className="text-ochre font-semibold">&gt; </span>{log}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Projected graph label chips (HTML over the canvas). */}
       <div aria-hidden className="landing-labels">
@@ -267,8 +362,15 @@ export function Landing() {
             ref={(el) => {
               labelRefs.current[i] = el;
             }}
-            className={`landing-label landing-label--${l.kind}`}
+            className={`landing-label landing-label--${l.kind} relative`}
           >
+            {/* Brackets crosshair indicator on hovered nodes */}
+            {hoveredLabelIndex === i && (
+              <div className="absolute -inset-x-4 -inset-y-1.5 flex justify-between pointer-events-none animate-subtle-pulse z-20">
+                <span className="console-crosshair-bracket">[</span>
+                <span className="console-crosshair-bracket">]</span>
+              </div>
+            )}
             <span className="landing-label-dot" />
             <div className="landing-label-content">
               <span className="landing-label-title">{l.text}</span>
@@ -319,7 +421,7 @@ export function Landing() {
       </div>
 
       {/* Right-rail act dots. */}
-      <nav aria-label="Sections" className="fixed right-6 top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-3 md:flex">
+      <nav aria-label="Sections" className="fixed right-[340px] top-1/2 z-30 hidden -translate-y-1/2 flex-col gap-3 lg:flex">
         {ACT_LABELS.map((label, i) => (
           <button
             key={label}
@@ -337,13 +439,13 @@ export function Landing() {
       <div className="landing-panels">
         {/* Act 1 */}
         <div ref={setPanel(0)} className="landing-panel">
-          <div className="landing-col">
+          <div className="landing-col console-glass-panel">
             <p className="landing-kicker">
               <span className="landing-num">{num(1)}</span>
-              <span aria-hidden className="size-1.5 rounded-full bg-[var(--ochre)]" />
+              <span aria-hidden className="size-1.5 rounded-full bg-[var(--ochre)] animate-subtle-pulse" />
               A memory that earns your trust
             </p>
-            <h1 className="landing-heading text-serif text-[44px] font-semibold italic leading-[1.04] tracking-tight md:text-[72px]">
+            <h1 className="landing-heading font-sans text-[36px] md:text-[54px] font-extrabold leading-[1.04] tracking-tight">
               Your life is data.
               <br />
               It can&apos;t tell you what it knows.
@@ -358,11 +460,11 @@ export function Landing() {
 
         {/* Act 2 */}
         <div ref={setPanel(1)} className="landing-panel">
-          <div className="landing-col">
+          <div className="landing-col console-glass-panel">
             <p className="landing-kicker">
               <span className="landing-num">{num(2)}</span> Reads
             </p>
-            <h2 className="landing-heading text-serif text-[34px] font-semibold italic leading-[1.08] tracking-tight md:text-[54px]">
+            <h2 className="landing-heading font-sans text-[32px] md:text-[46px] font-extrabold leading-[1.08] tracking-tight">
               Connect once.
               <br />
               The rest is invisible.
@@ -376,15 +478,15 @@ export function Landing() {
 
         {/* Act 3 */}
         <div ref={setPanel(2)} className="landing-panel">
-          <div className="landing-col">
+          <div className="landing-col console-glass-panel">
             <p className="landing-kicker">
               <span className="landing-num">{num(3)}</span> Remembers
             </p>
-            <h2 className="landing-heading text-serif text-[34px] font-semibold italic leading-[1.08] tracking-tight md:text-[54px]">
+            <h2 className="landing-heading font-sans text-[32px] md:text-[46px] font-extrabold leading-[1.08] tracking-tight">
               A graph, not a database.
             </h2>
             <p className="landing-sub">
-              People, places, projects — clustered by how they relate to you. Episodes fire across
+              People, projects — clustered by how they relate to you. Episodes fire across
               the edges; facts settle onto the people they describe. This is the memory, alive.
             </p>
           </div>
@@ -393,11 +495,11 @@ export function Landing() {
         {/* Act 4 */}
         <div ref={setPanel(3)} className="landing-panel">
           <div className="landing-split">
-            <div className="landing-col">
+            <div className="landing-col console-glass-panel">
               <p className="landing-kicker">
                 <span className="landing-num">{num(4)}</span> Cites
               </p>
-              <h2 className="landing-heading text-serif text-[32px] font-semibold italic leading-[1.08] tracking-tight md:text-[46px]">
+              <h2 className="landing-heading font-sans text-[30px] md:text-[42px] font-extrabold leading-[1.08] tracking-tight">
                 Every claim,
                 <br />
                 traceable to its sentence.
@@ -408,21 +510,21 @@ export function Landing() {
               </p>
             </div>
             <div className="trace-card">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-primary font-mono">
                 Extraction trace · Sara Lin
               </p>
-              <p className="mt-3 text-serif text-[18px] font-medium italic leading-snug text-foreground">
+              <p className="mt-3 text-serif text-[18px] font-medium italic leading-snug text-foreground font-sans">
                 &ldquo;send me the draft by Wednesday&rdquo;
               </p>
-              <div className="my-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+              <div className="my-3 flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-muted-foreground font-mono">
                 <span aria-hidden className="h-px flex-1 bg-border" />
                 derives
                 <span aria-hidden className="h-px flex-1 bg-border" />
               </div>
-              <p className="text-[14px] leading-snug text-foreground">
+              <p className="text-[14px] leading-snug text-foreground font-mono">
                 owes Sara · a draft of <em>Project Aurora</em> · due Wednesday
               </p>
-              <p className="mt-4 text-[11.5px] text-muted-foreground">
+              <p className="mt-4 text-[11.5px] text-muted-foreground font-mono">
                 Reinforced 2× · last seen 5 days ago · confidence 0.88
               </p>
             </div>
@@ -432,11 +534,11 @@ export function Landing() {
         {/* Act 5 */}
         <div ref={setPanel(4)} className="landing-panel">
           <div className="landing-split">
-            <div className="landing-col">
+            <div className="landing-col console-glass-panel">
               <p className="landing-kicker">
                 <span className="landing-num">{num(5)}</span> Interrupts
               </p>
-              <h2 className="landing-heading text-serif text-[32px] font-semibold italic leading-[1.08] tracking-tight md:text-[46px]">
+              <h2 className="landing-heading font-sans text-[30px] md:text-[42px] font-extrabold leading-[1.08] tracking-tight">
                 Rare. And right.
               </h2>
               <p className="landing-sub">
@@ -444,14 +546,14 @@ export function Landing() {
                 surfaced with reasoning, snoozable, quiet by default.
               </p>
             </div>
-            <div className="nudge-card">
+            <div className="nudge-card font-mono">
               <div className="flex items-start gap-3">
-                <span aria-hidden className="mt-1 size-2 rounded-full bg-[var(--ochre)] shadow-[0_0_12px_var(--ochre)]" />
+                <span aria-hidden className="mt-1 size-2 rounded-full bg-[var(--ochre)] shadow-[0_0_12px_var(--ochre)] animate-glow-pulse" />
                 <div>
                   <p className="text-[12px] font-semibold uppercase tracking-[0.2em] text-primary">
                     Commitment · due in 2 days
                   </p>
-                  <p className="mt-1.5 text-[15px] font-medium leading-snug text-foreground">
+                  <p className="mt-1.5 text-[15px] font-medium leading-snug text-foreground font-sans">
                     You owe Sara: Aurora draft
                   </p>
                   <p className="mt-1 text-[12.5px] text-muted-foreground">
@@ -465,23 +567,23 @@ export function Landing() {
 
         {/* Act 6 */}
         <div ref={setPanel(5)} className="landing-panel">
-          <div className="landing-col landing-col--center">
+          <div className="landing-col landing-col--center console-glass-panel">
             <p className="landing-kicker justify-center">
               <span className="landing-num">{num(6)}</span> The thesis
             </p>
-            <h2 className="landing-heading text-serif text-[44px] font-semibold italic leading-[1.04] tracking-tight md:text-[68px]">
+            <h2 className="landing-heading font-sans text-[44px] md:text-[60px] font-extrabold leading-[1.04] tracking-tight">
               Build the memory,
               <br />
               not the notebook.
             </h2>
-            <p className="landing-sub mx-auto text-center">
+            <p className="landing-sub mx-auto text-center font-sans text-[16px] md:text-[18px]">
               With the discipline to forget, the humility to cite, and the courage to interrupt.
             </p>
             <Link href={ctaHref} className="cta-button mt-10">
               {ctaLabel}
             </Link>
-            <p className="mt-6 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-              Read-only · Cited · Built on Qwen
+            <p className="mt-6 text-[11px] uppercase tracking-[0.22em] text-muted-foreground font-mono">
+              Read-only // Cited // Built on Qwen
             </p>
           </div>
         </div>
