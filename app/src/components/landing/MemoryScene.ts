@@ -24,48 +24,29 @@ class FrameTimer {
   }
 }
 
-/**
- * The Mnemosyne memory graph as a scroll-driven 3D scene.
- *
- * Driven by a single `progress` value in [0..1] (the page's scroll fraction).
- * Six acts, each 1/6 of the range:
- *   0.00–0.166  Cold open — quiet particle dust, no graph yet.
- *   0.166–0.333 Ingestion — nodes stream in from the right, pile into a cluster.
- *   0.333–0.500 Graph forms — nodes snap to graph positions, edges draw in,
- *                signal pulses begin firing along the edges.
- *   0.500–0.666 Signature — camera locks on one focused node (ochre highlight).
- *   0.666–0.833 Interrupts — a cluster of edges pulses orange-red (stale loop).
- *   0.833–1.000 Thesis — camera pulls way out, whole graph drifts, dust returns.
- *
- * Elements: ~160 instanced node spheres, ~260 edges, ~700 dust particles, and
- * ~48 signal pulses that travel node→node (memory "firing"). Post-processing:
- * render → bloom → film-grain + vignette.
- */
-
-const NODE_COUNT = 160;
+const PARTICLE_COUNT = 1200;
 const HUB_COUNT = 10;
-const EDGE_COUNT = 260;
-const DUST_COUNT = 700;
-const SIGNAL_COUNT = 48;
-const TOKEN_COUNT = 12; // labeled "meaning" tokens that travel the edges (HTML overlay)
+const TOKEN_COUNT = 12;
 
 const COLOR_INDIGO = new THREE.Color(0x4a3aa8);
 const COLOR_OCHRE = new THREE.Color(0xd9a653);
 const COLOR_LILAC = new THREE.Color(0x8b7fc7);
 const COLOR_ALERT = new THREE.Color(0xc2492f);
-const COLOR_DUST = new THREE.Color(0x9b8fc0);
 const COLOR_BG = new THREE.Color("#efe8d5");
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
 }
+
 function actProgress(p: number, start: number, end: number): number {
   return Math.max(0, Math.min(1, (p - start) / (end - start)));
 }
+
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
+
 function mulberry32(seed: number): () => number {
   let s = seed;
   return () => {
@@ -77,52 +58,31 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-interface NodeAnchors {
-  ingest: THREE.Vector3;
-  cluster: THREE.Vector3;
-  graph: THREE.Vector3;
-}
-
 export class MemoryScene {
   private renderer!: THREE.WebGLRenderer;
   private scene!: THREE.Scene;
-  private world!: THREE.Group; // graph contents — shifted right so text gets a clean column
+  private world!: THREE.Group; 
   private camera!: THREE.PerspectiveCamera;
   private composer!: EffectComposer;
   private bloomPass!: UnrealBloomPass;
   private grainPass!: ShaderPass;
   private timer = new FrameTimer();
 
-  private nodes!: THREE.InstancedMesh;
-  private nodeAnchors: NodeAnchors[] = [];
-  private nodeBaseColor: THREE.Color[] = [];
-  private nodeCurrent = new Float32Array(NODE_COUNT * 3); // live positions, reused by edges + signals
+  // The main Volumetric Core particle system
+  private coreParticles!: THREE.Points;
+  private corePositionsBase = new Float32Array(PARTICLE_COUNT * 3);
+  private corePositionsLattice = new Float32Array(PARTICLE_COUNT * 3);
+  private corePositionsTunnel = new Float32Array(PARTICLE_COUNT * 3);
+  private coreCurrentPositions = new Float32Array(PARTICLE_COUNT * 3);
+  private coreVelocities = new Float32Array(PARTICLE_COUNT * 3);
 
-  // Sub-nodes orbiting around hubs to represent details/facts visually
-  private subNodes!: THREE.InstancedMesh;
-  private subNodeOffset = new Float32Array(30 * 3); // phase, radius, speed
-  private subNodeParent = new Int16Array(30);       // parent hub node index
+  // Concentric wireframe orbital shells
+  private shells: THREE.LineSegments[] = [];
 
-  private edges!: THREE.LineSegments;
-  private edgeFrom = new Int16Array(EDGE_COUNT);
-  private edgeTo = new Int16Array(EDGE_COUNT);
-  private edgePositions!: Float32Array;
-  private edgeColors!: Float32Array;
-  private alertEdges = new Set<number>();
+  // Shockwave alert rings
+  private shockwaveRings: THREE.Mesh[] = [];
 
-  private dust!: THREE.Points;
-  private signals!: THREE.Points;
-  private signalPositions!: Float32Array;
-  private signalEdge = new Int16Array(SIGNAL_COUNT);
-  private signalT = new Float32Array(SIGNAL_COUNT);
-  private signalSpeed = new Float32Array(SIGNAL_COUNT);
-
-  private matrix = new THREE.Matrix4();
-  private vec = new THREE.Vector3();
-  private color = new THREE.Color();
-  private focusNodeIndex = 14; // "Sara Lin" — the highlighted node in the trace act
-
-  // New interactive properties
+  // Interaction
   private raycaster = new THREE.Raycaster();
   private mouse = new THREE.Vector2(-999, -999);
   private cameraOffset = new THREE.Vector3(0, 0, 0);
@@ -130,19 +90,16 @@ export class MemoryScene {
   public hoveredNodeIdx: number | null = null;
   private lastScrollY = 0;
   private scrollSpeed = 0;
+  private vec = new THREE.Vector3();
 
-  /**
-   * Curated labels — the "live data" overlay. Each maps a node index to a name
-   * or category. Person nodes get names; a few hubs are category clusters; one
-   * is "You". The React layer reads `labelScreens` each frame to position chips.
-   */
+  // Metadata labels mapped to index nodes
   readonly labels: { idx: number; text: string; detail?: string; kind: "self" | "person" | "category" | "episode" | "fact" | "source" }[] = [
     { idx: 0, text: "You", detail: "Active Brain Context", kind: "self" },
-    { idx: 1, text: "Work", detail: "Category · 48 episodes", kind: "category" },
-    { idx: 2, text: "Friends", detail: "Category · 12 contacts", kind: "category" },
-    { idx: 3, text: "Family", detail: "Category · 5 contacts", kind: "category" },
-    { idx: 5, text: "Project Aurora", detail: "Topic · 3 active loops", kind: "category" },
-    { idx: 8, text: "Personal AI", detail: "Topic · 15 references", kind: "category" },
+    { idx: 12, text: "Work", detail: "Category · 48 episodes", kind: "category" },
+    { idx: 24, text: "Friends", detail: "Category · 12 contacts", kind: "category" },
+    { idx: 36, text: "Family", detail: "Category · 5 contacts", kind: "category" },
+    { idx: 48, text: "Project Aurora", detail: "Topic · 3 active loops", kind: "category" },
+    { idx: 60, text: "Personal AI", detail: "Topic · 15 references", kind: "category" },
     
     // People
     { idx: 14, text: "Sara Lin", detail: "Contact · Realtor · 2× reinforced", kind: "person" },
@@ -152,67 +109,43 @@ export class MemoryScene {
     { idx: 73, text: "Raju Mehta", detail: "Contact · Software Lead", kind: "person" },
     { idx: 96, text: "Mom", detail: "Contact · Family Loop", kind: "person" },
     { idx: 121, text: "Dr. Alvarez", detail: "Contact · Cardiologist", kind: "person" },
-    { idx: 15, text: "David Cho", detail: "Contact · Co-author", kind: "person" },
-    { idx: 33, text: "Elena Rostova", detail: "Contact · Operations", kind: "person" },
-    { idx: 48, text: "Tom Miller", detail: "Contact · Architect", kind: "person" },
-    { idx: 62, text: "Amina Diop", detail: "Contact · Consultant", kind: "person" },
-    { idx: 85, text: "Kofi Mensah", detail: "Contact · Investor", kind: "person" },
     
     // Sources / Connections
     { idx: 4, text: "Gmail Inbox", detail: "Connected · 1.2k emails", kind: "source" },
     { idx: 9, text: "GCal Sync", detail: "Connected · 85 meetings", kind: "source" },
-    { idx: 12, text: "Outlook Mail", detail: "Linked · 420 items", kind: "source" },
     { idx: 20, text: "Local Notes", detail: "Syncing · 31 markdown files", kind: "source" },
     
-    // Episodes (events/meetings/conversations)
+    // Episodes
     { idx: 30, text: "Sync on Aurora", detail: "Meeting · 5 attendees · 12:15 PM", kind: "episode" },
     { idx: 45, text: "Dinner with Priya", detail: "Dinner · Aug 12 · 7:30 PM", kind: "episode" },
     { idx: 52, text: "Coffee w/ Marcus", detail: "Coffee · Aug 8 · 10:00 AM", kind: "episode" },
     { idx: 70, text: "Call w/ Elena", detail: "Call · Aug 14 · 11:30 AM", kind: "episode" },
     { idx: 88, text: "Weekly Review", detail: "Workspace Sync · Mondays", kind: "episode" },
     { idx: 104, text: "Design Handoff", detail: "Review · Wednesday", kind: "episode" },
-    { idx: 115, text: "Gmail: Aurora Contract", detail: "Email ingestion · 2d ago", kind: "episode" },
-    { idx: 130, text: "Cal: Dentist appt", detail: "Calendar Event · Aug 22", kind: "episode" },
-    { idx: 142, text: "Drafting Memo", detail: "Local note ingestion · 1d ago", kind: "episode" },
 
-    // Facts / Commitments / Conflicts
+    // Facts
     { idx: 22, text: "Aurora Due Wed", detail: "Commitment · confidence 0.88", kind: "fact" },
-    { idx: 36, text: "Marcus = Realtor", detail: "Extracted fact · 5d ago", kind: "fact" },
+    { idx: 35, text: "Marcus = Realtor", detail: "Extracted fact · 5d ago", kind: "fact" },
     { idx: 50, text: "Sara's new phone", detail: "Updated contact attribute", kind: "fact" },
     { idx: 66, text: "Flight UA 244", detail: "Travel confirmation · Aug 24", kind: "fact" },
     { idx: 78, text: "Priya's new job", detail: "Extracted Fact · PM at Google", kind: "fact" },
     { idx: 90, text: "Owe Jane reply", detail: "Open loop · 3d overdue", kind: "fact" },
-    { idx: 110, text: "Elena in Berlin", detail: "Extracted fact · Location", kind: "fact" },
-    { idx: 125, text: "Rent due July 1", detail: "Commitment · Monthly loop", kind: "fact" },
-    { idx: 138, text: "Aurora budget: $50k", detail: "Extracted Fact · Financial", kind: "fact" },
-    { idx: 150, text: "Call Dr. A on Fri", detail: "Commitment · Pending call", kind: "fact" },
   ];
-  /** Per-label screen position + opacity, recomputed each frame in update(). */
   labelScreens: { x: number; y: number; opacity: number }[] = [];
 
-  // Mid-edge labels for actual data relationships
+  // Mid-edge labels for actual data relationships (connected lines)
   readonly edgeLabels: { edgeIdx: number; text: string; kind: "email" | "meeting" | "system" | "conflict" }[] = [
     { edgeIdx: 12, text: "emailed", kind: "email" },
     { edgeIdx: 24, text: "met w/", kind: "meeting" },
-    { edgeIdx: 35, text: "co-occurred", kind: "system" },
+    { edgeIdx: 36, text: "co-occurred", kind: "system" },
     { edgeIdx: 48, text: "owes draft", kind: "conflict" },
-    { edgeIdx: 60, text: "calls", kind: "email" },
-    { edgeIdx: 72, text: "referenced in", kind: "system" },
-    { edgeIdx: 85, text: "collaborated", kind: "system" },
-    { edgeIdx: 98, text: "contradicts", kind: "conflict" },
-    { edgeIdx: 110, text: "shared file", kind: "system" },
-    { edgeIdx: 125, text: "mentioned in", kind: "email" },
-    { edgeIdx: 140, text: "assigned", kind: "system" },
-    { edgeIdx: 155, text: "scheduled", kind: "meeting" },
-    { edgeIdx: 172, text: "follows", kind: "system" },
-    { edgeIdx: 190, text: "discussed", kind: "meeting" },
-    { edgeIdx: 210, text: "works with", kind: "system" },
+    { edgeIdx: 60, text: "referenced in", kind: "system" },
+    { edgeIdx: 72, text: "collaborated", kind: "system" },
+    { edgeIdx: 85, text: "contradicts", kind: "conflict" },
   ];
   edgeLabelScreens: { x: number; y: number; opacity: number }[] = [];
 
-  // Meaning-tokens: small chips that travel along edges carrying real content
-  // (an episode, a fact, a briefing…). The React layer renders the chips; here
-  // we just animate their position along edges and project to screen.
+  // Meaning tokens traveling along pipeline conveyor belts
   private tokenEdge = new Int16Array(TOKEN_COUNT);
   private tokenT = new Float32Array(TOKEN_COUNT);
   private tokenSpeed = new Float32Array(TOKEN_COUNT);
@@ -224,9 +157,9 @@ export class MemoryScene {
     this.tokenScreens = Array.from({ length: TOKEN_COUNT }, () => ({ x: 0, y: 0, opacity: 0 }));
     const rand = mulberry32(53);
     for (let i = 0; i < TOKEN_COUNT; i++) {
-      this.tokenEdge[i] = i; // spread across the first edges initially
+      this.tokenEdge[i] = i % HUB_COUNT;
       this.tokenT[i] = rand();
-      this.tokenSpeed[i] = 0.05 + rand() * 0.07; // slow enough to read
+      this.tokenSpeed[i] = 0.08 + rand() * 0.09;
     }
   }
 
@@ -250,170 +183,145 @@ export class MemoryScene {
     this.renderer.setClearColor(COLOR_BG, 0);
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(COLOR_BG, 12, 40);
+    this.scene.fog = new THREE.Fog(COLOR_BG, 12, 45);
 
     this.camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 120);
     this.camera.position.set(0, 0, 16);
 
-    const key = new THREE.DirectionalLight(0xffffff, 1.5);
-    key.position.set(2, 4, 5);
+    const key = new THREE.DirectionalLight(0xffffff, 1.8);
+    key.position.set(3, 5, 6);
     this.scene.add(key);
-    this.scene.add(new THREE.AmbientLight(0xc6b69a, 0.7));
+    this.scene.add(new THREE.AmbientLight(0xc6b69a, 0.75));
 
-    // Graph contents live in a group we shift right (so the left text column
-    // stays clean) and rotate in place.
     this.world = new THREE.Group();
     this.scene.add(this.world);
 
-    this.buildNodes();
-    this.buildEdges();
-    this.buildDust();
-    this.buildSignals();
+    this.buildCoreParticles();
+    this.buildConcentricShells();
+    this.buildSonarRings();
     this.buildComposer(w, h, dpr);
   }
 
-  private buildNodes(): void {
-    const geom = new THREE.SphereGeometry(0.12, 16, 16);
-    const mat = new THREE.MeshStandardMaterial({
-      vertexColors: false,
-      emissiveIntensity: 0.6,
-      metalness: 0.15,
-      roughness: 0.5,
-      transparent: true,
-    });
-    this.nodes = new THREE.InstancedMesh(geom, mat, NODE_COUNT);
-    this.world.add(this.nodes);
+  private buildCoreParticles(): void {
+    const rand = mulberry32(88);
+    const colors = new Float32Array(PARTICLE_COUNT * 3);
 
-    const rand = mulberry32(7);
-    for (let i = 0; i < NODE_COUNT; i++) {
-      const ingest = new THREE.Vector3(20 + rand() * 10, (rand() - 0.5) * 12, (rand() - 0.5) * 5);
-      const cluster = new THREE.Vector3((rand() - 0.5) * 7, (rand() - 0.5) * 7, (rand() - 0.5) * 7);
-
-      const isHub = i < HUB_COUNT;
-      const radius = isHub ? 1.0 + rand() * 0.9 : 3.0 + rand() * 4.0;
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      // 1. Target Base (swirling spherical nebula)
+      const r = 1.2 + rand() * 2.8;
       const u = rand() * Math.PI * 2;
       const v = Math.acos(2 * rand() - 1);
-      const graph = new THREE.Vector3(
-        radius * Math.sin(v) * Math.cos(u),
-        radius * Math.sin(v) * Math.sin(u),
-        radius * Math.cos(v),
-      );
-      this.nodeAnchors.push({ ingest, cluster, graph });
+      const bx = r * Math.sin(v) * Math.cos(u);
+      const by = r * Math.sin(v) * Math.sin(u);
+      const bz = r * Math.cos(v);
 
-      // Color variety: hubs + ~12% are ochre, ~20% lilac, rest indigo.
+      this.corePositionsBase[i * 3 + 0] = bx;
+      this.corePositionsBase[i * 3 + 1] = by;
+      this.corePositionsBase[i * 3 + 2] = bz;
+
+      this.coreCurrentPositions[i * 3 + 0] = bx;
+      this.coreCurrentPositions[i * 3 + 1] = by;
+      this.coreCurrentPositions[i * 3 + 2] = bz;
+
+      // Random velocities for continuous drift
+      this.coreVelocities[i * 3 + 0] = (rand() - 0.5) * 0.4;
+      this.coreVelocities[i * 3 + 1] = (rand() - 0.5) * 0.4;
+      this.coreVelocities[i * 3 + 2] = (rand() - 0.5) * 0.4;
+
+      // 2. Target Lattice (geometric structures / clusters)
+      // Hub nodes are clustered, other nodes align to polyhedral vertices
+      const group = i % 8;
+      const theta = (group / 8) * Math.PI * 2 + rand() * 0.4;
+      const phi = (rand() - 0.5) * Math.PI * 0.8;
+      const lr = 2.0 + (i % 3) * 0.8;
+      this.corePositionsLattice[i * 3 + 0] = lr * Math.cos(phi) * Math.cos(theta);
+      this.corePositionsLattice[i * 3 + 1] = lr * Math.cos(phi) * Math.sin(theta);
+      this.corePositionsLattice[i * 3 + 2] = lr * Math.sin(phi);
+
+      // 3. Target Tunnel (traveling viewport tunnel)
+      const tAngle = rand() * Math.PI * 2;
+      const tRadius = 1.5 + rand() * 1.5;
+      const tz = (i / PARTICLE_COUNT) * 40.0 - 20.0; // spread from -20 to 20
+      this.corePositionsTunnel[i * 3 + 0] = Math.cos(tAngle) * tRadius;
+      this.corePositionsTunnel[i * 3 + 1] = Math.sin(tAngle) * tRadius;
+      this.corePositionsTunnel[i * 3 + 2] = tz;
+
+      // Colors: indigo, lilac, and ochre highlights
       const roll = rand();
-      let base: THREE.Color;
-      if (isHub || roll > 0.88) base = COLOR_OCHRE.clone();
-      else if (roll > 0.68) base = COLOR_LILAC.clone();
-      else base = COLOR_INDIGO.clone();
-      this.nodeBaseColor.push(base);
-
-      this.matrix.makeTranslation(ingest.x, ingest.y, ingest.z);
-      this.nodes.setMatrixAt(i, this.matrix);
-      this.nodes.setColorAt(i, base);
+      const col = roll > 0.85 ? COLOR_OCHRE : roll > 0.6 ? COLOR_LILAC : COLOR_INDIGO;
+      colors[i * 3 + 0] = col.r;
+      colors[i * 3 + 1] = col.g;
+      colors[i * 3 + 2] = col.b;
     }
-    this.nodes.instanceMatrix.needsUpdate = true;
-    if (this.nodes.instanceColor) this.nodes.instanceColor.needsUpdate = true;
 
-    // Build orbiting sub-nodes (30 tiny details orbiting around the 10 hubs)
-    const subGeom = new THREE.SphereGeometry(0.045, 8, 8);
-    const subMat = new THREE.MeshStandardMaterial({
-      color: COLOR_LILAC,
-      metalness: 0.1,
-      roughness: 0.8,
-      transparent: true,
-      opacity: 0.6,
-    });
-    this.subNodes = new THREE.InstancedMesh(subGeom, subMat, 30);
-    this.world.add(this.subNodes);
-
-    const subRand = mulberry32(42);
-    for (let i = 0; i < 30; i++) {
-      this.subNodeParent[i] = i % HUB_COUNT;
-      this.subNodeOffset[i * 3 + 0] = subRand() * Math.PI * 2; // phase angle
-      this.subNodeOffset[i * 3 + 1] = 0.35 + subRand() * 0.45; // radius
-      this.subNodeOffset[i * 3 + 2] = 0.5 + subRand() * 1.5;   // speed factor
-    }
-  }
-
-  private buildEdges(): void {
-    const rand = mulberry32(11);
-    for (let i = 0; i < EDGE_COUNT; i++) {
-      const from = Math.floor(rand() * HUB_COUNT);
-      let to = Math.floor(HUB_COUNT + rand() * (NODE_COUNT - HUB_COUNT));
-      if (to === from) to = (to + 1) % NODE_COUNT;
-      this.edgeFrom[i] = from;
-      this.edgeTo[i] = to;
-    }
-    // A small cluster of edges around the focus node = the "stale loop" alert.
-    for (let i = 0; i < EDGE_COUNT; i++) {
-      if (this.edgeFrom[i] === this.focusNodeIndex || this.edgeTo[i] === this.focusNodeIndex) {
-        this.alertEdges.add(i);
-      }
-    }
-    if (this.alertEdges.size === 0) this.alertEdges.add(0);
-
-    this.edgePositions = new Float32Array(EDGE_COUNT * 6);
-    this.edgeColors = new Float32Array(EDGE_COUNT * 6);
     const geom = new THREE.BufferGeometry();
-    geom.setAttribute("position", new THREE.BufferAttribute(this.edgePositions, 3));
-    geom.setAttribute("color", new THREE.BufferAttribute(this.edgeColors, 3));
-    const mat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5 });
-    this.edges = new THREE.LineSegments(geom, mat);
-    this.world.add(this.edges);
-  }
-
-  private buildDust(): void {
-    const rand = mulberry32(23);
-    const pos = new Float32Array(DUST_COUNT * 3);
-    for (let i = 0; i < DUST_COUNT; i++) {
-      const r = 6 + rand() * 22;
-      const u = rand() * Math.PI * 2;
-      const v = Math.acos(2 * rand() - 1);
-      pos[i * 3 + 0] = r * Math.sin(v) * Math.cos(u);
-      pos[i * 3 + 1] = r * Math.sin(v) * Math.sin(u);
-      pos[i * 3 + 2] = r * Math.cos(v);
-    }
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    const mat = new THREE.PointsMaterial({
-      color: COLOR_DUST,
-      size: 0.05,
-      sizeAttenuation: true,
-      transparent: true,
-      opacity: 0.35,
-      depthWrite: false,
-    });
-    this.dust = new THREE.Points(geom, mat);
-    this.world.add(this.dust);
-  }
-
-  private buildSignals(): void {
-    const rand = mulberry32(31);
-    this.signalPositions = new Float32Array(SIGNAL_COUNT * 3);
-    const colors = new Float32Array(SIGNAL_COUNT * 3);
-    for (let i = 0; i < SIGNAL_COUNT; i++) {
-      this.signalEdge[i] = Math.floor(rand() * EDGE_COUNT);
-      this.signalT[i] = rand();
-      this.signalSpeed[i] = 0.25 + rand() * 0.55;
-      const c = rand() > 0.5 ? COLOR_OCHRE : COLOR_INDIGO;
-      colors[i * 3 + 0] = c.r;
-      colors[i * 3 + 1] = c.g;
-      colors[i * 3 + 2] = c.b;
-    }
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute("position", new THREE.BufferAttribute(this.signalPositions, 3));
+    geom.setAttribute("position", new THREE.BufferAttribute(this.coreCurrentPositions, 3));
     geom.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
     const mat = new THREE.PointsMaterial({
-      size: 0.22,
+      size: 0.16,
       sizeAttenuation: true,
       vertexColors: true,
       transparent: true,
       opacity: 0,
       depthWrite: false,
+      blending: THREE.AdditiveBlending,
     });
-    this.signals = new THREE.Points(geom, mat);
-    this.world.add(this.signals);
+
+    this.coreParticles = new THREE.Points(geom, mat);
+    this.world.add(this.coreParticles);
+  }
+
+  private buildConcentricShells(): void {
+    // Elegant concentric outer rings (wireframes) orbiting the memory core
+    const shellRadii = [2.2, 3.5, 4.8];
+    const segments = 32;
+
+    shellRadii.forEach((r, idx) => {
+      const geom = new THREE.BufferGeometry();
+      const vertices: number[] = [];
+      
+      for (let i = 0; i <= segments; i++) {
+        const theta = (i / segments) * Math.PI * 2;
+        vertices.push(Math.cos(theta) * r, Math.sin(theta) * r, 0);
+      }
+      
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+      
+      const mat = new THREE.LineBasicMaterial({
+        color: idx === 1 ? COLOR_OCHRE : COLOR_LILAC,
+        transparent: true,
+        opacity: 0.28,
+        blending: THREE.AdditiveBlending,
+      });
+
+      const line = new THREE.Line(geom, mat);
+      // Give them unique initial rotational angles
+      line.rotation.x = Math.random() * Math.PI;
+      line.rotation.y = Math.random() * Math.PI;
+      
+      this.world.add(line);
+      this.shells.push(line as unknown as THREE.LineSegments); // store reference
+    });
+  }
+
+  private buildSonarRings(): void {
+    // Expanding rings representing proactive sonar sweeps in Act 5
+    const ringGeom = new THREE.RingGeometry(1, 1.025, 64);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: COLOR_ALERT,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+
+    for (let r = 0; r < 3; r++) {
+      const ring = new THREE.Mesh(ringGeom, ringMat.clone());
+      ring.rotation.x = Math.PI / 2; // Flat horizontal plane
+      this.world.add(ring);
+      this.shockwaveRings.push(ring);
+    }
   }
 
   private buildComposer(w: number, h: number, dpr: number): void {
@@ -422,15 +330,15 @@ export class MemoryScene {
     this.composer.setSize(w, h);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.8, 0.6, 0.2);
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.95, 0.7, 0.15);
     this.composer.addPass(this.bloomPass);
 
     this.grainPass = new ShaderPass({
       uniforms: {
         tDiffuse: { value: null },
         uTime: { value: 0 },
-        uGrain: { value: 0.04 },
-        uVignette: { value: 0.9 },
+        uGrain: { value: 0.038 },
+        uVignette: { value: 0.88 },
         uAberration: { value: 0.0002 },
       },
       vertexShader: /* glsl */ `
@@ -467,239 +375,183 @@ export class MemoryScene {
     const el = this.timer.getElapsed();
     this.grainPass.uniforms.uTime.value = el;
 
-    // Scroll speed for chromatic aberration
+    // Scroll speed for horizontal chromatic aberration separator
     const currentScrollY = progress * (typeof document !== "undefined" ? document.documentElement.scrollHeight - window.innerHeight : 1000);
     const scrollDelta = Math.abs(currentScrollY - this.lastScrollY);
     this.lastScrollY = currentScrollY;
     this.scrollSpeed = lerp(this.scrollSpeed, scrollDelta * 0.005, 0.1);
-    const aberrationAmount = Math.max(0.0, Math.min(0.015, this.scrollSpeed));
+    const aberrationAmount = Math.max(0.0, Math.min(0.016, this.scrollSpeed));
     this.grainPass.uniforms.uAberration.value = 0.0002 + aberrationAmount;
 
-    // ── Mouse Parallax offset ──────────────────────────────────────────
+    // Mouse Parallax (smooth tilting)
     if (this.mouse.x > -900) {
-      this.targetCameraOffset.set(this.mouse.x * 1.6, this.mouse.y * 1.6, 0);
+      this.targetCameraOffset.set(this.mouse.x * 1.8, this.mouse.y * 1.8, 0);
     } else {
       this.targetCameraOffset.set(0, 0, 0);
     }
     this.cameraOffset.lerp(this.targetCameraOffset, 0.05);
 
-    // ── Camera path (mostly dolly; horizontal placement is done by shifting
-    //    the world group right, so the left text column stays clean). ────────
-    const cam: [number, number, number][] = [
-      [0, 0, 17],
-      [0, 1.2, 12],
-      [0, 2.2, 10],
-      [0.6, 1, 7.2],
-      [0, 1, 9],
-      [0, 0, 25],
+    // ── Camera path across Acts ─────────
+    const camPaths: [number, number, number][] = [
+      [0, 0, 16],   // Act 1: distant nebula
+      [0, 0.8, 13.5], // Act 2: connect / vortex
+      [0, 0.4, 9.5],  // Act 3: lattice ignition
+      [0, 0, 0.1],  // Act 4: inside fly-through portal (starts moving)
+      [0, 0.5, 14.5], // Act 5: alert / supernova pullback
+      [0, 0, 26],   // Act 6: starfield pullback
     ];
-    const segs = cam.length - 1;
+
+    const segs = camPaths.length - 1;
     const s = Math.min(progress * segs, segs - 0.0001);
     const idx = Math.floor(s);
     const eased = smoothstep(0, 1, s - idx);
-    const a = cam[idx]!;
-    const b = cam[idx + 1]!;
-    const floatX = Math.sin(el * 0.25) * 0.2;
-    const floatY = Math.cos(el * 0.2) * 0.18;
+    const a = camPaths[idx]!;
+    const b = camPaths[idx + 1]!;
+
+    const floatX = Math.sin(el * 0.2) * 0.22;
+    const floatY = Math.cos(el * 0.18) * 0.2;
+
     this.camera.position.set(
       lerp(a[0], b[0], eased) + floatX + this.cameraOffset.x,
       lerp(a[1], b[1], eased) + floatY + this.cameraOffset.y,
-      lerp(a[2], b[2], eased),
+      lerp(a[2], b[2], eased)
     );
     this.camera.lookAt(0, 0, 0);
 
-    // World group: shift right (desktop) so text owns the left; rotate in place.
-    // On narrow viewports keep it centered (text overlays with a stronger scrim).
-    const vw = this.canvas.clientWidth || window.innerWidth;
-    const wide = vw >= 900;
-    const baseOffset = wide ? 3.6 : 0;
-    const offset =
-      baseOffset *
-      smoothstep(0.1, 0.3, progress) *
-      (1 - smoothstep(0.86, 1.0, progress) * 0.8); // recenter in the thesis act
-    this.world.position.x = offset;
-    this.world.rotation.y = progress * Math.PI * 0.8;
-    this.dust.rotation.y = -progress * Math.PI * 0.3 + el * 0.01;
+    // Rotate shells on different axes
+    this.shells.forEach((line, index) => {
+      const dir = index % 2 === 0 ? 1 : -1;
+      line.rotation.x += dt * 0.15 * (index + 1) * dir;
+      line.rotation.y += dt * 0.2 * (index + 1) * dir;
+      line.rotation.z += dt * 0.08 * (index + 1) * dir;
+      const opacity = smoothstep(0.12, 0.35, progress) * (1.0 - smoothstep(0.82, 0.95, progress));
+      (line.material as THREE.LineBasicMaterial).opacity = opacity * 0.3;
+    });
 
-    const overall =
-      smoothstep(0.04, 0.16, progress) * (1 - smoothstep(0.93, 1.0, progress) * 0.4);
-
-    // ── Raycasting for Node Hover ──────────────────────────────────────
-    if (this.mouse.x > -900 && overall > 0.1) {
-      this.raycaster.setFromCamera(this.mouse, this.camera);
-      const intersects = this.raycaster.intersectObject(this.nodes);
-      if (intersects.length > 0 && intersects[0].instanceId !== undefined) {
-        this.hoveredNodeIdx = intersects[0].instanceId;
-      } else {
-        this.hoveredNodeIdx = null;
-      }
-    } else {
-      this.hoveredNodeIdx = null;
-    }
-
-    // ── Node transitions ───────────────────────────────────────────────
+    // ── Particle layout states ─────────
     const act2 = actProgress(progress, 0.166, 0.333);
     const act3 = actProgress(progress, 0.333, 0.5);
-    const focusBlend = smoothstep(0.5, 0.62, progress) - smoothstep(0.78, 0.92, progress);
+    const act4 = actProgress(progress, 0.5, 0.666);
+    const act5 = actProgress(progress, 0.666, 0.833);
+    const act6 = actProgress(progress, 0.833, 1.0);
 
-    (this.nodes.material as THREE.MeshStandardMaterial).opacity = overall;
+    const overallOpacity = smoothstep(0.04, 0.16, progress) * (1 - smoothstep(0.93, 1.0, progress) * 0.45);
+    (this.coreParticles.material as THREE.PointsMaterial).opacity = overallOpacity * 0.9;
 
-    for (let i = 0; i < NODE_COUNT; i++) {
-      const an = this.nodeAnchors[i]!;
-      const stagger = i / NODE_COUNT;
-      const t2 = smoothstep(0, 1, Math.max(0, Math.min(1, (act2 - stagger * 0.5) / 0.5)));
-      const t3 = smoothstep(0, 1, act3);
-      this.vec.copy(an.ingest).lerp(an.cluster, t2).lerp(an.graph, t3);
-
-      const drift = 0.025 * (1 - act3);
-      this.vec.x += Math.sin(el * 0.4 + i) * drift;
-      this.vec.y += Math.cos(el * 0.35 + i * 1.3) * drift;
-
-      this.nodeCurrent[i * 3 + 0] = this.vec.x;
-      this.nodeCurrent[i * 3 + 1] = this.vec.y;
-      this.nodeCurrent[i * 3 + 2] = this.vec.z;
-
-      const isFocus = i === this.focusNodeIndex;
-      const isHovered = i === this.hoveredNodeIdx;
-      // Gentle twinkle on every node; the focus node swells in Act 4, hovered node swells on hover.
-      const twinkle = 1 + Math.sin(el * 1.5 + i * 2.1) * 0.06;
-      let scale = (isFocus ? 1 + focusBlend * 1.3 : 1) * twinkle;
-      if (isHovered) {
-        scale *= 1.8;
-      }
-      this.matrix.makeScale(scale, scale, scale);
-      this.matrix.setPosition(this.vec);
-      this.nodes.setMatrixAt(i, this.matrix);
-
-      // Instanced emissive / glow variety via color scaling (>1.0 color values bloom)
-      let glowMultiplier = isHovered ? 4.0 : 1.0;
-      if (isFocus) {
-        this.color.copy(this.nodeBaseColor[i]!).lerp(COLOR_OCHRE, focusBlend);
-        glowMultiplier += focusBlend * 1.5;
+    // Render shockwave alert rings in Act 5
+    const pulseStrength = act5 * overallOpacity;
+    for (let r = 0; r < this.shockwaveRings.length; r++) {
+      const ring = this.shockwaveRings[r]!;
+      const mat = ring.material as THREE.MeshBasicMaterial;
+      if (pulseStrength > 0.05) {
+        const t = (el * 0.72 + r * 0.33) % 1.0;
+        const ringScale = t * 13.0;
+        ring.scale.set(ringScale, ringScale, ringScale);
+        mat.opacity = (1.0 - t) * pulseStrength * 0.85;
       } else {
-        this.color.copy(this.nodeBaseColor[i]!);
-      }
-      this.color.multiplyScalar(glowMultiplier);
-      this.nodes.setColorAt(i, this.color);
-    }
-    this.nodes.instanceMatrix.needsUpdate = true;
-    if (this.nodes.instanceColor) this.nodes.instanceColor.needsUpdate = true;
-
-    // ── Sub-nodes Orbiting Animation ──────────────────────────────────
-    (this.subNodes.material as THREE.MeshStandardMaterial).opacity = overall * 0.75;
-    for (let i = 0; i < 30; i++) {
-      const pIdx = this.subNodeParent[i]!;
-      const px = this.nodeCurrent[pIdx * 3 + 0]!;
-      const py = this.nodeCurrent[pIdx * 3 + 1]!;
-      const pz = this.nodeCurrent[pIdx * 3 + 2]!;
-
-      const phase = this.subNodeOffset[i * 3 + 0]!;
-      const radius = this.subNodeOffset[i * 3 + 1]!;
-      const speed = this.subNodeOffset[i * 3 + 2]!;
-
-      const angle = phase + el * speed;
-      // Orbit in a tilted plane
-      this.vec.set(
-        px + Math.cos(angle) * radius,
-        py + Math.sin(angle) * radius,
-        pz + Math.sin(angle * 0.5) * radius * 0.5
-      );
-
-      // Subnode visual multiplier
-      const isHovered = pIdx === this.hoveredNodeIdx;
-      const subScale = isHovered ? 1.5 : 1.0;
-      this.matrix.makeScale(subScale, subScale, subScale);
-      this.matrix.setPosition(this.vec);
-      this.subNodes.setMatrixAt(i, this.matrix);
-    }
-    this.subNodes.instanceMatrix.needsUpdate = true;
-
-    // ── Edges ──────────────────────────────────────────────────────────
-    const edgeAppear = actProgress(progress, 0.36, 0.56);
-    const visibleEdges = Math.floor(EDGE_COUNT * edgeAppear);
-    const pulseBlend = smoothstep(0.66, 0.74, progress) - smoothstep(0.86, 0.95, progress);
-    const pulseT = pulseBlend * (0.5 + 0.5 * Math.sin(el * 5.0));
-    (this.edges.material as THREE.LineBasicMaterial).opacity = 0.5 * overall;
-
-    for (let e = 0; e < EDGE_COUNT; e++) {
-      const f = this.edgeFrom[e]!;
-      const t = this.edgeTo[e]!;
-      const base = e * 6;
-      const visible = e < visibleEdges;
-      if (visible) {
-        this.edgePositions[base + 0] = this.nodeCurrent[f * 3 + 0]!;
-        this.edgePositions[base + 1] = this.nodeCurrent[f * 3 + 1]!;
-        this.edgePositions[base + 2] = this.nodeCurrent[f * 3 + 2]!;
-        this.edgePositions[base + 3] = this.nodeCurrent[t * 3 + 0]!;
-        this.edgePositions[base + 4] = this.nodeCurrent[t * 3 + 1]!;
-        this.edgePositions[base + 5] = this.nodeCurrent[t * 3 + 2]!;
-      } else {
-        for (let k = 0; k < 6; k++) this.edgePositions[base + k] = 0;
-      }
-
-      // If connected to hovered node, make the edge glow amber
-      const isHoverEdge = this.hoveredNodeIdx !== null && (f === this.hoveredNodeIdx || t === this.hoveredNodeIdx);
-      if (isHoverEdge) {
-        this.color.copy(COLOR_OCHRE).multiplyScalar(2.5);
-      } else if (this.alertEdges.has(e)) {
-        this.color.copy(COLOR_INDIGO).lerp(COLOR_ALERT, pulseT);
-      } else {
-        this.color.copy(COLOR_INDIGO).multiplyScalar(0.45);
-      }
-      for (let k = 0; k < 2; k++) {
-        this.edgeColors[base + k * 3 + 0] = this.color.r;
-        this.edgeColors[base + k * 3 + 1] = this.color.g;
-        this.edgeColors[base + k * 3 + 2] = this.color.b;
+        mat.opacity = 0;
       }
     }
-    (this.edges.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-    (this.edges.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
 
-    // ── Signal pulses (memory firing along edges) ──────────────────────
-    const signalsOn = smoothstep(0.4, 0.55, progress) * overall;
-    (this.signals.material as THREE.PointsMaterial).opacity = signalsOn * 0.95;
-    for (let i = 0; i < SIGNAL_COUNT; i++) {
-      let speedMult = 1.0;
-      const e = Math.min(this.signalEdge[i]!, EDGE_COUNT - 1);
-      const f = this.edgeFrom[e]!;
-      const t = this.edgeTo[e]!;
+    // Update positions and velocities
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const idx = i * 3;
+      const bx = this.corePositionsBase[idx + 0]!;
+      const by = this.corePositionsBase[idx + 1]!;
+      const bz = this.corePositionsBase[idx + 2]!;
 
-      // Speed up pulses passing through hovered nodes to make it look active
-      if (this.hoveredNodeIdx !== null && (f === this.hoveredNodeIdx || t === this.hoveredNodeIdx)) {
-        speedMult = 2.5;
+      const lx = this.corePositionsLattice[idx + 0]!;
+      const ly = this.corePositionsLattice[idx + 1]!;
+      const lz = this.corePositionsLattice[idx + 2]!;
+
+      const tx = this.corePositionsTunnel[idx + 0]!;
+      const ty = this.corePositionsTunnel[idx + 1]!;
+      const tz = this.corePositionsTunnel[idx + 2]!;
+
+      // 1. Calculate base swirling position (Act 1 / fluid noise)
+      const noiseX = Math.sin(el * 0.8 + i * 0.12) * 0.15;
+      const noiseY = Math.cos(el * 0.6 + i * 0.08) * 0.15;
+      const noiseZ = Math.sin(el * 0.5 + i * 0.22) * 0.12;
+
+      let targetX = bx + noiseX;
+      let targetY = by + noiseY;
+      let targetZ = bz + noiseZ;
+
+      // 2. Act 2: Vortex Ingestion (pull in/vortex curves)
+      if (act2 > 0.01) {
+        // Curve path: Spiral vortex inwards
+        const t2 = smoothstep(0, 1, act2);
+        const spiralAngle = el * 2.0 + (i * 0.05);
+        const spiralRadius = lerp(5.0, 2.0, t2) + Math.sin(i) * 0.5;
+        const spiralX = Math.cos(spiralAngle) * spiralRadius;
+        const spiralY = Math.sin(spiralAngle) * spiralRadius;
+        const spiralZ = lerp(-6.0, 0.0, t2) + (i % 5) * 0.4;
+        
+        targetX = lerp(targetX, spiralX, t2);
+        targetY = lerp(targetY, spiralY, t2);
+        targetZ = lerp(targetZ, spiralZ, t2);
       }
 
-      this.signalT[i]! += this.signalSpeed[i]! * dt * speedMult;
-      if (this.signalT[i]! > 1) {
-        this.signalT[i]! -= 1;
-        this.signalEdge[i] = Math.floor((el * 13 + i * 7) % Math.max(1, visibleEdges));
+      // 3. Act 3: Core Ignition Lattice
+      if (act3 > 0.01) {
+        const t3 = smoothstep(0, 1, act3);
+        targetX = lerp(targetX, lx, t3);
+        targetY = lerp(targetY, ly, t3);
+        targetZ = lerp(targetZ, lz, t3);
       }
-      
-      const tt = this.signalT[i]!;
-      this.signalPositions[i * 3 + 0] = lerp(this.nodeCurrent[f * 3 + 0]!, this.nodeCurrent[t * 3 + 0]!, tt);
-      this.signalPositions[i * 3 + 1] = lerp(this.nodeCurrent[f * 3 + 1]!, this.nodeCurrent[t * 3 + 1]!, tt);
-      this.signalPositions[i * 3 + 2] = lerp(this.nodeCurrent[f * 3 + 2]!, this.nodeCurrent[t * 3 + 2]!, tt);
+
+      // 4. Act 4: Volumetric Grid Tunnel
+      if (act4 > 0.01) {
+        const t4 = smoothstep(0, 1, act4);
+        targetX = lerp(targetX, tx, t4);
+        targetY = lerp(targetY, ty, t4);
+        targetZ = lerp(targetZ, tz, t4);
+      }
+
+      // 5. Act 5: Supernova Shockwave (explosive outward expansion)
+      if (act5 > 0.01) {
+        const t5 = smoothstep(0.0, 0.5, act5) - smoothstep(0.5, 1.0, act5);
+        // Calculate radial direction vector
+        const len = Math.sqrt(targetX * targetX + targetY * targetY + targetZ * targetZ);
+        const nx = len > 0 ? targetX / len : 0;
+        const ny = len > 0 ? targetY / len : 0;
+        const nz = len > 0 ? targetZ / len : 0;
+
+        const shockDist = t5 * 6.5 * (1.0 + (i % 4) * 0.25);
+        targetX += nx * shockDist;
+        targetY += ny * shockDist;
+        targetZ += nz * shockDist;
+      }
+
+      // 6. Act 6: Cosmic Dissolve (wide starfield)
+      if (act6 > 0.01) {
+        const t6 = smoothstep(0, 1, act6);
+        const dx = (this.coreVelocities[idx + 0]!) * t6 * 15.0;
+        const dy = (this.coreVelocities[idx + 1]!) * t6 * 15.0;
+        const dz = (this.coreVelocities[idx + 2]!) * t6 * 15.0;
+        targetX += dx;
+        targetY += dy;
+        targetZ += dz;
+      }
+
+      this.coreCurrentPositions[idx + 0] = targetX;
+      this.coreCurrentPositions[idx + 1] = targetY;
+      this.coreCurrentPositions[idx + 2] = targetZ;
     }
-    (this.signals.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
+    (this.coreParticles.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
 
-    // ── Dust + bloom ───────────────────────────────────────────────────
-    (this.dust.material as THREE.PointsMaterial).opacity = 0.18 + 0.22 * (1 - act3);
-    
-    // Add extra bloom strength if hovering to make the glows pop
-    const hoverBloomBoost = this.hoveredNodeIdx !== null ? 0.35 : 0;
-    this.bloomPass.strength = 0.45 + 0.5 * overall + pulseBlend * 0.5 + hoverBloomBoost;
-
-    // ── Project label positions to screen for the HTML overlay. ─────────
+    // ── Project HTML Metadata Labels to Screen Space ─────────
     this.world.updateMatrixWorld(true);
     const cw = this.canvas.clientWidth || window.innerWidth;
     const ch = this.canvas.clientHeight || window.innerHeight;
-    const labelAppear = smoothstep(0.34, 0.46, progress) * (1 - smoothstep(0.84, 0.95, progress));
+    const labelAppear = smoothstep(0.34, 0.46, progress) * (1 - smoothstep(0.80, 0.95, progress));
+
     for (let k = 0; k < this.labels.length; k++) {
-      const idx = this.labels[k]!.idx;
+      const idx = this.labels[k]!.idx * 3;
       this.vec.set(
-        this.nodeCurrent[idx * 3 + 0]!,
-        this.nodeCurrent[idx * 3 + 1]!,
-        this.nodeCurrent[idx * 3 + 2]!,
+        this.coreCurrentPositions[idx + 0]!,
+        this.coreCurrentPositions[idx + 1]!,
+        this.coreCurrentPositions[idx + 2]!
       );
       this.vec.applyMatrix4(this.world.matrixWorld).project(this.camera);
       const behind = this.vec.z > 1;
@@ -707,64 +559,57 @@ export class MemoryScene {
       const out = this.labelScreens[k]!;
       out.x = (this.vec.x * 0.5 + 0.5) * cw;
       out.y = (-this.vec.y * 0.5 + 0.5) * ch;
-      
-      // If this specific node is hovered, force full opacity so it's readable
-      const isThisNodeHovered = this.hoveredNodeIdx !== null && idx === this.hoveredNodeIdx;
-      out.opacity = behind ? 0 : (isThisNodeHovered ? 1.0 : labelAppear * depthFade * overall);
+
+      const isHovered = this.hoveredNodeIdx !== null && this.labels[k]!.idx === this.hoveredNodeIdx;
+      out.opacity = behind ? 0 : (isHovered ? 1.0 : labelAppear * depthFade * overallOpacity);
     }
 
-    // ── Mid-Edge Labels ────────────────────────────────────────────────
-    const edgeLabelAppear = smoothstep(0.42, 0.54, progress) * (1 - smoothstep(0.82, 0.95, progress));
+    // ── Project HTML Mid-Edge Labels ─────────
+    const edgeLabelAppear = smoothstep(0.42, 0.54, progress) * (1 - smoothstep(0.80, 0.95, progress));
     for (let k = 0; k < this.edgeLabels.length; k++) {
       const eIdx = this.edgeLabels[k]!.edgeIdx;
-      if (eIdx < visibleEdges) {
-        const f = this.edgeFrom[eIdx]!;
-        const t = this.edgeTo[eIdx]!;
-        const mx = (this.nodeCurrent[f * 3 + 0]! + this.nodeCurrent[t * 3 + 0]!) * 0.5;
-        const my = (this.nodeCurrent[f * 3 + 1]! + this.nodeCurrent[t * 3 + 1]!) * 0.5;
-        const mz = (this.nodeCurrent[f * 3 + 2]! + this.nodeCurrent[t * 3 + 2]!) * 0.5;
-        this.vec.set(mx, my, mz);
-        this.vec.applyMatrix4(this.world.matrixWorld).project(this.camera);
+      const f = eIdx * 3;
+      const t = ((eIdx + 11) % HUB_COUNT) * 3; // map back to some other hub
 
-        const behind = this.vec.z > 1;
-        const depthFade = 1 - smoothstep(0.55, 1.0, this.vec.z);
-        const out = this.edgeLabelScreens[k]!;
-        out.x = (this.vec.x * 0.5 + 0.5) * cw;
-        out.y = (-this.vec.y * 0.5 + 0.5) * ch;
-        out.opacity = behind ? 0 : edgeLabelAppear * depthFade * overall;
-      } else {
-        this.edgeLabelScreens[k]!.opacity = 0;
-      }
+      const mx = (this.coreCurrentPositions[f + 0]! + this.coreCurrentPositions[t + 0]!) * 0.5;
+      const my = (this.coreCurrentPositions[f + 1]! + this.coreCurrentPositions[t + 1]!) * 0.5;
+      const mz = (this.coreCurrentPositions[f + 2]! + this.coreCurrentPositions[t + 2]!) * 0.5;
+      this.vec.set(mx, my, mz);
+      this.vec.applyMatrix4(this.world.matrixWorld).project(this.camera);
+
+      const behind = this.vec.z > 1;
+      const depthFade = 1 - smoothstep(0.55, 1.0, this.vec.z);
+      const out = this.edgeLabelScreens[k]!;
+      out.x = (this.vec.x * 0.5 + 0.5) * cw;
+      out.y = (-this.vec.y * 0.5 + 0.5) * ch;
+      out.opacity = behind ? 0 : edgeLabelAppear * depthFade * overallOpacity;
     }
 
-    // ── Meaning-tokens: travel along edges + project to screen. ─────────
-    const tokenAppear =
-      smoothstep(0.34, 0.48, progress) * (1 - smoothstep(0.84, 0.95, progress));
+    // ── Meaning-tokens: travel along edge projections ─────────
+    const tokenAppear = smoothstep(0.34, 0.48, progress) * (1 - smoothstep(0.80, 0.95, progress));
     for (let i = 0; i < TOKEN_COUNT; i++) {
       this.tokenT[i]! += this.tokenSpeed[i]! * dt;
       if (this.tokenT[i]! > 1) {
         this.tokenT[i]! -= 1;
-        // Roam to a fresh visible edge so tokens traverse the whole graph.
-        this.tokenEdge[i] = Math.floor((el * 7 + i * 53) % Math.max(1, visibleEdges));
+        this.tokenEdge[i] = (this.tokenEdge[i]! + 1) % HUB_COUNT;
       }
-      const e = Math.min(this.tokenEdge[i]!, EDGE_COUNT - 1);
-      const f = this.edgeFrom[e]!;
-      const t = this.edgeTo[e]!;
+      const e = this.tokenEdge[i]!;
+      const f = e * 3;
+      const t = ((e + 3) % HUB_COUNT) * 3;
       const tt = this.tokenT[i]!;
       this.vec.set(
-        lerp(this.nodeCurrent[f * 3 + 0]!, this.nodeCurrent[t * 3 + 0]!, tt),
-        lerp(this.nodeCurrent[f * 3 + 1]!, this.nodeCurrent[t * 3 + 1]!, tt),
-        lerp(this.nodeCurrent[f * 3 + 2]!, this.nodeCurrent[t * 3 + 2]!, tt),
+        lerp(this.coreCurrentPositions[f + 0]!, this.coreCurrentPositions[t + 0]!, tt),
+        lerp(this.coreCurrentPositions[f + 1]!, this.coreCurrentPositions[t + 1]!, tt),
+        lerp(this.coreCurrentPositions[f + 2]!, this.coreCurrentPositions[t + 2]!, tt)
       );
       this.vec.applyMatrix4(this.world.matrixWorld).project(this.camera);
       const behind = this.vec.z > 1;
       const depthFade = 1 - smoothstep(0.6, 1.0, this.vec.z);
-      // Fade near the ends of an edge so tokens "arrive" and "depart" softly.
       const endFade = smoothstep(0, 0.12, tt) * (1 - smoothstep(0.88, 1, tt));
       const out = this.tokenScreens[i]!;
       out.x = (this.vec.x * 0.5 + 0.5) * cw;
       out.y = (-this.vec.y * 0.5 + 0.5) * ch;
-      out.opacity = behind ? 0 : tokenAppear * depthFade * endFade * overall;
+      out.opacity = behind ? 0 : tokenAppear * depthFade * endFade * overallOpacity;
     }
   }
 
@@ -783,16 +628,16 @@ export class MemoryScene {
   }
 
   destroy(): void {
-    this.nodes.geometry.dispose();
-    (this.nodes.material as THREE.Material).dispose();
-    this.subNodes.geometry.dispose();
-    (this.subNodes.material as THREE.Material).dispose();
-    this.edges.geometry.dispose();
-    (this.edges.material as THREE.Material).dispose();
-    this.dust.geometry.dispose();
-    (this.dust.material as THREE.Material).dispose();
-    this.signals.geometry.dispose();
-    (this.signals.material as THREE.Material).dispose();
+    this.coreParticles.geometry.dispose();
+    (this.coreParticles.material as THREE.Material).dispose();
+    this.shells.forEach(line => {
+      line.geometry.dispose();
+      (line.material as THREE.Material).dispose();
+    });
+    this.shockwaveRings.forEach(ring => {
+      ring.geometry.dispose();
+      (ring.material as THREE.Material).dispose();
+    });
     this.composer.dispose();
     this.renderer.dispose();
   }

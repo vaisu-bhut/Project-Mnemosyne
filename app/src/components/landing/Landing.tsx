@@ -36,16 +36,10 @@ const LANDING_LABELS: { text: string; detail?: string; kind: "self" | "person" |
   { text: "Raju Mehta", detail: "Contact · Software Lead", kind: "person" },
   { text: "Mom", detail: "Contact · Family Loop", kind: "person" },
   { text: "Dr. Alvarez", detail: "Contact · Cardiologist", kind: "person" },
-  { text: "David Cho", detail: "Contact · Co-author", kind: "person" },
-  { text: "Elena Rostova", detail: "Contact · Operations", kind: "person" },
-  { text: "Tom Miller", detail: "Contact · Architect", kind: "person" },
-  { text: "Amina Diop", detail: "Contact · Consultant", kind: "person" },
-  { text: "Kofi Mensah", detail: "Contact · Investor", kind: "person" },
   
   // Sources / Connections
   { text: "Gmail Inbox", detail: "Connected · 1.2k emails", kind: "source" },
   { text: "GCal Sync", detail: "Connected · 85 meetings", kind: "source" },
-  { text: "Outlook Mail", detail: "Linked · 420 items", kind: "source" },
   { text: "Local Notes", detail: "Syncing · 31 markdown files", kind: "source" },
   
   // Episodes
@@ -55,9 +49,6 @@ const LANDING_LABELS: { text: string; detail?: string; kind: "self" | "person" |
   { text: "Call w/ Elena", detail: "Call · Aug 14 · 11:30 AM", kind: "episode" },
   { text: "Weekly Review", detail: "Workspace Sync · Mondays", kind: "episode" },
   { text: "Design Handoff", detail: "Review · Wednesday", kind: "episode" },
-  { text: "Gmail: Aurora Contract", detail: "Email ingestion · 2d ago", kind: "episode" },
-  { text: "Cal: Dentist appt", detail: "Calendar Event · Aug 22", kind: "episode" },
-  { text: "Drafting Memo", detail: "Local note ingestion · 1d ago", kind: "episode" },
 
   // Facts
   { text: "Aurora Due Wed", detail: "Commitment · confidence 0.88", kind: "fact" },
@@ -66,10 +57,6 @@ const LANDING_LABELS: { text: string; detail?: string; kind: "self" | "person" |
   { text: "Flight UA 244", detail: "Travel confirmation · Aug 24", kind: "fact" },
   { text: "Priya's new job", detail: "Extracted Fact · PM at Google", kind: "fact" },
   { text: "Owe Jane reply", detail: "Open loop · 3d overdue", kind: "fact" },
-  { text: "Elena in Berlin", detail: "Extracted fact · Location", kind: "fact" },
-  { text: "Rent due July 1", detail: "Commitment · Monthly loop", kind: "fact" },
-  { text: "Aurora budget: $50k", detail: "Extracted Fact · Financial", kind: "fact" },
-  { text: "Call Dr. A on Fri", detail: "Commitment · Pending call", kind: "fact" },
 ];
 
 /** Mirrors MemoryScene's TOKEN_COUNT (12). Each travels an edge carrying a real
@@ -96,17 +83,9 @@ const EDGE_LABELS_META: { text: string; kind: "email" | "meeting" | "system" | "
   { text: "met w/", kind: "meeting" },
   { text: "co-occurred", kind: "system" },
   { text: "owes draft", kind: "conflict" },
-  { text: "calls", kind: "email" },
   { text: "referenced in", kind: "system" },
   { text: "collaborated", kind: "system" },
   { text: "contradicts", kind: "conflict" },
-  { text: "shared file", kind: "system" },
-  { text: "mentioned in", kind: "email" },
-  { text: "assigned", kind: "system" },
-  { text: "scheduled", kind: "meeting" },
-  { text: "follows", kind: "system" },
-  { text: "discussed", kind: "meeting" },
-  { text: "works with", kind: "system" },
 ];
 
 function smoothstep(e0: number, e1: number, x: number): number {
