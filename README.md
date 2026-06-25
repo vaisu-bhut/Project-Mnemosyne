@@ -12,15 +12,52 @@ The following diagram illustrates how the system components connect:
 
 ```mermaid
 graph TD
-    User([User]) <--> Frontend[Next.js Frontend App<br>:3001]
-    Frontend <--> |Fastify API / JWT Auth| Backend[Fastify API Backend<br>:3000]
-    Backend <--> |Kysely Query Builder| Postgres[(Postgres 16 + pgvector)]
-    Backend <--> |Enqueue Tasks| Queue[BullMQ + Redis Task Queue]
-    Queue <--> Worker[BullMQ Worker Processes]
-    Worker <--> |Consolidation & Extraction| Postgres
-    Worker <--> |Semantic Embeddings / Q&A| Gemini[Gemini API / Qwen LLM]
-    Worker <--> |Ingest Connectors| ExternalAPIs[Google Workspace & MS Graph APIs]
-    Worker <--> |Local Storage| LocalFS[(Local Filesystem / S3)]
+    subgraph Frontend [Next.js Frontend :3001]
+        UI[Web UI / app/] --> Pages[Pages: Dashboard, Memory, Graph, Briefings]
+        UI --> Components[Components: 3D Force Graph, Voice Capture, Chat Panel]
+        UI --> Client[API Client / lib/api/]
+    end
+
+    subgraph Backend [Fastify API Server :3000]
+        Client <--> |JWT Bearer Token Auth| Router[API Router / api/]
+        Router --> AuthHandler[Auth Handler / auth/]
+        Router --> AskHandler[Ask & Search / retrieve & memory/]
+        Router --> ConfigHandler[Config & Sources / config/]
+    end
+
+    subgraph DB [PostgreSQL 16 + pgvector]
+        Router <--> |Kysely SQL| Relational[Relational: users, sessions, oauth_accounts, sources]
+        Router <--> |Kysely SQL| Blackboard[Blackboard: blackboard, nudge_snoozes]
+        WorkerProcesses <--> |Kysely SQL| PartitionedTable[(Partitioned Episodes: monthly tables)]
+        WorkerProcesses <--> |Kysely SQL| SemanticMemory[(Semantic Memory: facts, open_loops)]
+        WorkerProcesses <--> |Kysely SQL| GraphTables[(Graph Network: entities, edges)]
+    end
+
+    subgraph QueueSystem [BullMQ Task Runner]
+        Router --> |Enqueue jobs| Redis[(Redis Broker)]
+        Redis <--> WorkerProcesses[Worker Scheduler / worker/]
+    end
+
+    subgraph WorkerProcesses [BullMQ Background Workers]
+        IngestWorker[Ingest Worker]
+        ExtractWorker[Extract Worker]
+        ConsolidateWorker[Consolidate Worker]
+        NudgeWorker[Nudge Worker]
+    end
+
+    subgraph External [External APIs & Services]
+        IngestWorker --> |OAuth Contacts/Mail/Calendar| APIs[Google APIs & MS Graph]
+        ExtractWorker & AskHandler --> |Semantic Embeddings / Q&A| Gemini[Gemini API / Qwen LLM]
+        IngestWorker --> |Raw Files| LocalFS[(Local Filesystem / AWS S3)]
+    end
+
+    %% Internal Worker Actions
+    IngestWorker --> |Creates episodes| Redis
+    Redis --> ExtractWorker
+    ExtractWorker --> |Writes facts & entities| GraphTables
+    ConsolidateWorker --> |Alias merge & decay| GraphTables
+    ConsolidateWorker --> |Builds co_occurs links| GraphTables
+    NudgeWorker --> |Writes proactive nudges| Blackboard
 ```
 
 ---
