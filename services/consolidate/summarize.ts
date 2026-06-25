@@ -18,7 +18,7 @@ export async function summarizeEntity(
 ): Promise<string | null> {
   const entity = await deps.db
     .selectFrom("entities")
-    .select(["id", "canonical_name", "attrs"])
+    .select(["id", "canonical_name", "attrs", "type"])
     .where("id", "=", entityId)
     .where("user_id", "=", userId)
     .executeTakeFirstOrThrow();
@@ -48,10 +48,48 @@ export async function summarizeEntity(
     summary = `${entity.canonical_name}: ${statements.join(" ")}`;
   }
 
+  let suggestedQuestions: string[] | undefined;
+  if (entity.type === "person" && deps.generator.available) {
+    const openLoops = await deps.db
+      .selectFrom("open_loops")
+      .select(["description", "direction"])
+      .where("user_id", "=", userId)
+      .where("counterparty", "=", entityId)
+      .where("status", "=", "open")
+      .execute();
+
+    const context = [
+      summary ? `About ${entity.canonical_name}: ${summary}` : "",
+      ...openLoops.map((t) => `Open thread (${t.direction === "i_owe" ? "i_owe" : "they_owe"}): ${t.description}`),
+      ...statements.slice(0, 5).map((f) => `Fact: ${f}`),
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    try {
+      const raw = await deps.generator.generateText(
+        `You're prepping me to see ${entity.canonical_name}. From this context, suggest 3 short, specific questions I could ask them. One per line, no numbering.\n\n${context || "(little is known)"}`,
+        { enableThinking: false },
+      );
+      suggestedQuestions = raw
+        .split("\n")
+        .map((l) => l.replace(/^[\s\-*\d.]+/, "").trim())
+        .filter(Boolean)
+        .slice(0, 5);
+    } catch (e) {
+      console.error(`Failed to precompute questions for ${entity.canonical_name}:`, e);
+    }
+  }
+
   await deps.db
     .updateTable("entities")
     .set({
-      attrs: { ...entity.attrs, summary, summarized_at: new Date().toISOString() },
+      attrs: {
+        ...entity.attrs,
+        summary,
+        summarized_at: new Date().toISOString(),
+        ...(suggestedQuestions ? { suggestedQuestions } : {}),
+      },
       updated_at: new Date(),
     })
     .where("id", "=", entityId)

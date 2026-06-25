@@ -7,6 +7,7 @@ import { detectContradictions } from "./contradictions.js";
 import { decayFacts } from "./decay.js";
 import { enforceRetention } from "./retention.js";
 import { buildPeopleGraph } from "./peopleGraph.js";
+import { summarizeAllEntities } from "./summarize.js";
 
 export { mergeEntities, resolveEntities } from "./entities.js";
 export { buildPeopleGraph } from "./peopleGraph.js";
@@ -83,6 +84,15 @@ export async function runConsolidation(
   });
   // Rebuild the people graph last, after aliases are merged into canonical entities.
   const { edgesBuilt } = await buildPeopleGraph(deps.db, userId);
+
+  // Background summarize and question pre-generation
+  if (deps.generator) {
+    try {
+      await summarizeAllEntities({ db: deps.db, generator: deps.generator }, userId);
+    } catch (e) {
+      console.error(`Failed to precompute summaries and questions during consolidation for user ${userId}:`, e);
+    }
+  }
 
   return {
     entitiesMerged: merged,

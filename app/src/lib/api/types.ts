@@ -374,6 +374,7 @@ export interface PeopleGraphNode {
   /** Relation context derived from source scope (work/personal/health/...). */
   circle: string | null;
   interactions: number;
+  type?: string;
 }
 
 export interface PeopleGraphLink {

@@ -253,6 +253,7 @@ export interface PeopleGraphNode {
   /** Relation context derived from source scope (work/personal/health/...). */
   circle: string | null;
   interactions: number;
+  type?: string;
 }
 export interface PeopleGraphLink {
   source: string;
@@ -321,8 +322,28 @@ export async function peopleGraph(
     closeness: r.closeness,
     circle: r.circle,
     interactions: Number(r.interactions),
+    type: "person",
   }));
   const nodeIds = new Set(nodes.map((n) => n.id));
+
+  // Fetch episodes for the user
+  const episodeRows = await db
+    .selectFrom("episodes")
+    .select(["id", "title", "kind"])
+    .where("user_id", "=", userId)
+    .execute();
+
+  const episodeNodes: PeopleGraphNode[] = episodeRows.map((e) => ({
+    id: e.id,
+    name: e.title || `${e.kind} Episode`,
+    closeness: 0.3,
+    circle: "episode",
+    interactions: 0,
+    type: "episode",
+  }));
+
+  const allNodes = [...nodes, ...episodeNodes];
+  const allNodeIds = new Set(allNodes.map((n) => n.id));
 
   const linkRows = await sql<GraphLinkRow>`
     SELECT src_id AS source, dst_id AS target,
@@ -341,7 +362,26 @@ export async function peopleGraph(
       lastSeen: l.last_seen,
     }));
 
-  return { nodes, links, totalPeople, truncated: totalPeople > nodes.length };
+  // Fetch mentioned_in links
+  const mentionedRows = await db
+    .selectFrom("edges")
+    .select(["src_id as source", "dst_id as target"])
+    .where("user_id", "=", userId)
+    .where("rel", "=", "mentioned_in")
+    .execute();
+
+  const mentionedLinks: PeopleGraphLink[] = mentionedRows
+    .filter((m) => allNodeIds.has(m.source) && allNodeIds.has(m.target))
+    .map((m) => ({
+      source: m.source,
+      target: m.target,
+      weight: 1.5,
+      lastSeen: null,
+    }));
+
+  const allLinks = [...links, ...mentionedLinks];
+
+  return { nodes: allNodes, links: allLinks, totalPeople, truncated: totalPeople > nodes.length };
 }
 
 /** Convenience: open loops the user owes (for surfacing). */

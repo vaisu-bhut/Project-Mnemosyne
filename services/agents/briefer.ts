@@ -100,7 +100,9 @@ export async function briefEntity(
   const summary =
     typeof entity.attrs.summary === "string" ? entity.attrs.summary : null;
 
-  const suggestedQuestions = await suggestQuestions(deps, entity.canonical_name, health.openThreads, recentFacts, summary);
+  const suggestedQuestions = Array.isArray(entity.attrs.suggestedQuestions)
+    ? (entity.attrs.suggestedQuestions as string[])
+    : suggestQuestionsFallback(entity.canonical_name, health.openThreads, recentFacts);
 
   return {
     entityId: entity.id,
@@ -203,32 +205,11 @@ export async function upcomingBriefings(
   return out;
 }
 
-async function suggestQuestions(
-  deps: BrieferDeps,
+function suggestQuestionsFallback(
   name: string,
   threads: OpenThread[],
   facts: BriefFact[],
-  summary: string | null,
-): Promise<string[]> {
-  if (deps.generator.available) {
-    const context = [
-      summary ? `About ${name}: ${summary}` : "",
-      ...threads.map((t) => `Open thread (${t.direction}): ${t.description}`),
-      ...facts.map((f) => `Fact: ${f.statement}`),
-    ]
-      .filter(Boolean)
-      .join("\n");
-    const raw = await deps.generator.generateText(
-      `You're prepping me to see ${name}. From this context, suggest 3 short, specific questions I could ask them. One per line, no numbering.\n\n${context || "(little is known)"}`,
-      { enableThinking: false },
-    );
-    const qs = raw
-      .split("\n")
-      .map((l) => l.replace(/^[\s\-*\d.]+/, "").trim())
-      .filter(Boolean);
-    if (qs.length) return qs.slice(0, 5);
-  }
-
+): string[] {
   // Deterministic fallback.
   const qs: string[] = [];
   for (const t of threads) {
