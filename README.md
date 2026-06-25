@@ -12,13 +12,13 @@ The following diagram illustrates how the system components connect:
 
 ```mermaid
 graph TD
-    subgraph Frontend [Next.js Frontend :3001]
+    subgraph Frontend [Next.js Frontend: mnemosyne.clestiq.com]
         UI[Web UI / app/] --> Pages[Pages: Dashboard, Memory, Graph, Briefings]
         UI --> Components[Components: 3D Force Graph, Voice Capture, Chat Panel]
         UI --> Client[API Client / lib/api/]
     end
 
-    subgraph Backend [Fastify API Server :3000]
+    subgraph Backend [Fastify API Server: api.mnemosyne.clestiq.com]
         Client <--> |JWT Bearer Token Auth| Router[API Router / api/]
         Router --> AuthHandler[Auth Handler / auth/]
         Router --> AskHandler[Ask & Search / retrieve & memory/]
@@ -58,6 +58,29 @@ graph TD
     ConsolidateWorker --> |Alias merge & decay| GraphTables
     ConsolidateWorker --> |Builds co_occurs links| GraphTables
     NudgeWorker --> |Writes proactive nudges| Blackboard
+
+    %% Styling Classes
+    classDef frontend fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef backend fill:#0f172a,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
+    classDef db fill:#0f172a,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef queue fill:#0f172a,stroke:#fbbf24,stroke-width:2px,color:#f8fafc;
+    classDef worker fill:#0f172a,stroke:#f472b6,stroke-width:2px,color:#f8fafc;
+    classDef external fill:#0f172a,stroke:#94a3b8,stroke-width:2px,color:#f8fafc;
+
+    %% Subgraph Styling
+    style Frontend fill:#0f172a,stroke:#0284c7,stroke-width:3px,color:#f8fafc
+    style Backend fill:#0f172a,stroke:#7c3aed,stroke-width:3px,color:#f8fafc
+    style DB fill:#0f172a,stroke:#059669,stroke-width:3px,color:#f8fafc
+    style QueueSystem fill:#0f172a,stroke:#d97706,stroke-width:3px,color:#f8fafc
+    style WorkerProcesses fill:#0f172a,stroke:#db2777,stroke-width:3px,color:#f8fafc
+    style External fill:#0f172a,stroke:#475569,stroke-width:3px,color:#f8fafc
+
+    class UI,Pages,Components,Client frontend;
+    class Router,AuthHandler,AskHandler,ConfigHandler backend;
+    class Relational,Blackboard,PartitionedTable,SemanticMemory,GraphTables db;
+    class Redis queue;
+    class IngestWorker,ExtractWorker,ConsolidateWorker,NudgeWorker worker;
+    class APIs,Gemini,LocalFS external;
 ```
 
 ---
