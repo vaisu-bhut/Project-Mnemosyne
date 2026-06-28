@@ -5,10 +5,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    alicloud = {
-      source  = "aliyun/alicloud"
-      version = "~> 1.200.0"
-    }
   }
 }
 
@@ -18,10 +14,73 @@ provider "aws" {
   secret_key = var.aws_secret_key
 }
 
-provider "alicloud" {
-  region     = var.alicloud_region
-  access_key = var.alicloud_access_key
-  secret_key = var.alicloud_secret_key
+# --- AWS Network Infrastructure (VPC) ---
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name    = "${var.project_name}-vpc"
+    Project = var.project_name
+  }
+}
+
+resource "aws_internet_gateway" "gw" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name    = "${var.project_name}-igw"
+    Project = var.project_name
+  }
+}
+
+resource "aws_subnet" "public_a" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "${var.aws_region}a"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name    = "${var.project_name}-public-subnet-a"
+    Project = var.project_name
+  }
+}
+
+resource "aws_subnet" "public_b" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.2.0/24"
+  availability_zone       = "${var.aws_region}b"
+  map_public_ip_on_launch = true
+
+  tags = {
+    Name    = "${var.project_name}-public-subnet-b"
+    Project = var.project_name
+  }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.gw.id
+  }
+
+  tags = {
+    Name    = "${var.project_name}-public-rt"
+    Project = var.project_name
+  }
+}
+
+resource "aws_route_table_association" "public_a" {
+  subnet_id      = aws_subnet.public_a.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "public_b" {
+  subnet_id      = aws_subnet.public_b.id
+  route_table_id = aws_route_table.public.id
 }
 
 # --- AWS S3 Artifact Bucket ---
@@ -37,143 +96,159 @@ resource "aws_s3_bucket" "artifacts" {
   }
 }
 
-# --- AWS RDS PostgreSQL Database ---
-# Security Group for RDS to allow traffic ONLY from the Alibaba ECS IP
+# --- AWS Security Groups ---
+# Security Group for EC2 Backend
+resource "aws_security_group" "backend_sg" {
+  name        = "${var.project_name}-backend-sg"
+  description = "Security group for backend EC2 instance"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name    = "${var.project_name}-backend-sg"
+    Project = var.project_name
+  }
+}
+
+resource "aws_security_group_rule" "backend_ingress_ssh" {
+  type              = "ingress"
+  from_port         = 22
+  to_port           = 22
+  protocol          = "tcp"
+  security_group_id = aws_security_group.backend_sg.id
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "backend_ingress_http" {
+  type              = "ingress"
+  from_port         = 80
+  to_port           = 80
+  protocol          = "tcp"
+  security_group_id = aws_security_group.backend_sg.id
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "backend_ingress_https" {
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcp"
+  security_group_id = aws_security_group.backend_sg.id
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "backend_ingress_api" {
+  type              = "ingress"
+  from_port         = 3000
+  to_port           = 3000
+  protocol          = "tcp"
+  security_group_id = aws_security_group.backend_sg.id
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+resource "aws_security_group_rule" "backend_egress" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  security_group_id = aws_security_group.backend_sg.id
+  cidr_blocks       = ["0.0.0.0/0"]
+}
+
+# Security Group for RDS to allow traffic ONLY from the backend SG
 resource "aws_security_group" "rds_sg" {
   name        = "${var.project_name}-rds-sg"
-  description = "Allow inbound PostgreSQL traffic from Alibaba ECS"
+  description = "Allow inbound PostgreSQL traffic from backend EC2"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name    = "${var.project_name}-rds-sg"
+    Project = var.project_name
+  }
 }
 
 resource "aws_security_group_rule" "rds_ingress" {
-  type              = "ingress"
-  from_port         = 5432
-  to_port           = 5432
-  protocol          = "tcp"
-  security_group_id = aws_security_group.rds_sg.id
-  cidr_blocks       = ["${alicloud_instance.backend.public_ip}/32"]
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds_sg.id
+  source_security_group_id = aws_security_group.backend_sg.id
 }
 
-resource "aws_db_instance" "postgres" {
-  identifier             = "${var.project_name}-db"
-  db_name                = "mnemosyne"
-  allocated_storage      = 20
-  engine                 = "postgres"
-  engine_version         = "16"
-  instance_class         = "db.t3.micro"
-  username               = "mnemosyne"
-  password               = "Mnemosyne2026"
-  skip_final_snapshot    = true
-  publicly_accessible    = true
+# --- AWS RDS Aurora PostgreSQL Database ---
+resource "aws_db_subnet_group" "db_subnet_group" {
+  name       = "${var.project_name}-db-subnet-group"
+  subnet_ids = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+
+  tags = {
+    Name    = "${var.project_name}-db-subnet-group"
+    Project = var.project_name
+  }
+}
+
+resource "aws_rds_cluster" "postgres" {
+  cluster_identifier     = "${var.project_name}-db-cluster"
+  engine                 = "aurora-postgresql"
+  engine_version         = "16.1"
+  database_name          = "mnemosyne"
+  master_username        = "mnemosyne"
+  master_password        = "Mnemosyne2026"
+  db_subnet_group_name   = aws_db_subnet_group.db_subnet_group.name
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  skip_final_snapshot    = true
 
   tags = {
     Project = var.project_name
   }
 }
 
-# --- Alibaba Cloud Compute (ECS) ---
-# Network
-resource "alicloud_vpc" "main" {
-  vpc_name   = "${var.project_name}-vpc"
-  cidr_block = "10.0.0.0/8"
+resource "aws_rds_cluster_instance" "postgres_instances" {
+  count              = 1
+  identifier         = "${var.project_name}-db-instance-${count.index}"
+  cluster_identifier = aws_rds_cluster.postgres.id
+  instance_class     = "db.t3.medium"
+  engine             = aws_rds_cluster.postgres.engine
+  engine_version     = aws_rds_cluster.postgres.engine_version
+  db_subnet_group_name   = aws_db_subnet_group.db_subnet_group.name
+
+  tags = {
+    Project = var.project_name
+  }
 }
 
-data "alicloud_zones" "available" {
-  available_resource_creation = "Instance"
-}
-
-resource "alicloud_vswitch" "main" {
-  vswitch_name = "${var.project_name}-vswitch"
-  vpc_id       = alicloud_vpc.main.id
-  cidr_block   = "10.1.0.0/16"
-  zone_id      = data.alicloud_zones.available.zones[0].id
-}
-
-# Security Group
-resource "alicloud_security_group" "main" {
-  name   = "${var.project_name}-sg"
-  vpc_id = alicloud_vpc.main.id
-}
-
-# Allow SSH
-resource "alicloud_security_group_rule" "allow_ssh" {
-  type              = "ingress"
-  ip_protocol       = "tcp"
-  nic_type          = "intranet"
-  policy            = "accept"
-  port_range        = "22/22"
-  priority          = 1
-  security_group_id = alicloud_security_group.main.id
-  cidr_ip           = "0.0.0.0/0"
-}
-
-# Allow HTTP
-resource "alicloud_security_group_rule" "allow_http" {
-  type              = "ingress"
-  ip_protocol       = "tcp"
-  nic_type          = "intranet"
-  policy            = "accept"
-  port_range        = "80/80"
-  priority          = 1
-  security_group_id = alicloud_security_group.main.id
-  cidr_ip           = "0.0.0.0/0"
-}
-
-# Allow HTTPS
-resource "alicloud_security_group_rule" "allow_https" {
-  type              = "ingress"
-  ip_protocol       = "tcp"
-  nic_type          = "intranet"
-  policy            = "accept"
-  port_range        = "443/443"
-  priority          = 1
-  security_group_id = alicloud_security_group.main.id
-  cidr_ip           = "0.0.0.0/0"
-}
-
-# Allow Backend API port (assuming 3000)
-resource "alicloud_security_group_rule" "allow_api" {
-  type              = "ingress"
-  ip_protocol       = "tcp"
-  nic_type          = "intranet"
-  policy            = "accept"
-  port_range        = "3000/3000"
-  priority          = 1
-  security_group_id = alicloud_security_group.main.id
-  cidr_ip           = "0.0.0.0/0"
-}
-
+# --- AWS EC2 Compute Instance ---
 # SSH Key Pair
-resource "alicloud_key_pair" "main" {
-  key_pair_name = "${var.project_name}-key-v2"
-  public_key    = file("${path.module}/id_rsa.pem.pub")
+resource "aws_key_pair" "backend_key" {
+  key_name   = "${var.project_name}-key-v2"
+  public_key = file("${path.module}/id_rsa.pem.pub")
+}
+
+# Ubuntu AMI
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+  owners = ["099720109477"] # Canonical
 }
 
 # Compute Instance
-data "alicloud_images" "ubuntu" {
-  name_regex  = "^ubuntu_22_04_x64_20G_alibase"
-  most_recent = true
-  owners      = "system"
-}
+resource "aws_instance" "backend" {
+  ami                    = data.aws_ami.ubuntu.id
+  instance_type          = var.instance_type
+  subnet_id              = aws_subnet.public_a.id
+  vpc_security_group_ids = [aws_security_group.backend_sg.id]
+  key_name               = aws_key_pair.backend_key.key_name
 
-data "alicloud_instance_types" "available" {
-  availability_zone = data.alicloud_zones.available.zones[0].id
-  cpu_core_count    = 2
-  memory_size       = 4
-}
-
-resource "alicloud_instance" "backend" {
-  availability_zone = data.alicloud_zones.available.zones[0].id
-  security_groups   = [alicloud_security_group.main.id]
-  instance_type     = data.alicloud_instance_types.available.instance_types[0].id
-  system_disk_category = "cloud_efficiency"
-  system_disk_size     = 40
-  image_id          = data.alicloud_images.ubuntu.images[0].id
-  instance_name     = "${var.project_name}-backend"
-  vswitch_id        = alicloud_vswitch.main.id
-  internet_max_bandwidth_out = 10
-  internet_charge_type       = "PayByTraffic"
-  key_name          = alicloud_key_pair.main.key_pair_name
+  tags = {
+    Name    = "${var.project_name}-backend"
+    Project = var.project_name
+  }
 }
 
 # --- Generate .env file for Ansible ---
@@ -187,7 +262,7 @@ AWS_SECRET_ACCESS_KEY=${var.aws_secret_key}
 QWEN_API_KEY=${var.qwen_api_key}
 
 S3_BUCKET_NAME=${aws_s3_bucket.artifacts.bucket}
-DATABASE_URL=postgres://${aws_db_instance.postgres.username}:${aws_db_instance.postgres.password}@${aws_db_instance.postgres.endpoint}/${aws_db_instance.postgres.db_name}
+DATABASE_URL=postgres://${aws_rds_cluster.postgres.master_username}:${aws_rds_cluster.postgres.master_password}@${aws_rds_cluster.postgres.endpoint}:${aws_rds_cluster.postgres.port}/${aws_rds_cluster.postgres.database_name}
 REDIS_URL=redis://redis:6379
 
 VIRTUAL_HOST=api.clestiq.com

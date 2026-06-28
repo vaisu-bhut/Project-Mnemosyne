@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useAuth } from "@/lib/auth/AuthProvider";
 
 /**
@@ -337,6 +338,7 @@ export function Landing() {
       {/* ── Cyber HUD Header bar ── */}
       <div className="console-hud-bar console-header">
         <div className="flex items-center gap-4 font-mono">
+          <Image src="/logo-transparent.svg" alt="Mnemosyne" width={22} height={22} className="shrink-0" />
           <span className="font-bold text-[11px] tracking-[0.2em] text-foreground">MNEMOSYNE // SYSTEM CONSOLE</span>
           <span aria-hidden className="h-3 w-px bg-border hidden sm:block" />
           <span className="hidden sm:inline text-muted-foreground text-[9px]">LATENCY: 14MS</span>

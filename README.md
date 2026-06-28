@@ -11,76 +11,108 @@ Its guiding principle: **"Build the memory, not the notebook — discipline to f
 The following diagram illustrates how the system components connect:
 
 ```mermaid
-graph TD
-    subgraph Frontend [Next.js Frontend: mnemosyne.clestiq.com]
-        UI[Web UI / app/] --> Pages[Pages: Dashboard, Memory, Graph, Briefings]
-        UI --> Components[Components: 3D Force Graph, Voice Capture, Chat Panel]
-        UI --> Client[API Client / lib/api/]
+flowchart LR
+
+    %% ── User ──
+    User(("🧠 User"))
+
+    subgraph VERCEL ["☁️ Vercel Edge Network"]
+        direction TB
+        Dashboard["📊 Dashboard"]
+        Graph3D["🌐 3D Force Graph"]
+        VoiceUI["🎙️ Voice Capture"]
+        ChatUI["💬 Ask / Q&A Panel"]
+        AuthUI["🔐 OAuth Login"]
     end
 
-    subgraph Backend [Fastify API Server: api.mnemosyne.clestiq.com]
-        Client <--> |JWT Bearer Token Auth| Router[API Router / api/]
-        Router --> AuthHandler[Auth Handler / auth/]
-        Router --> AskHandler[Ask & Search / retrieve & memory/]
-        Router --> ConfigHandler[Config & Sources / config/]
+    subgraph VPC ["🔒 AWS VPC · us-east-1"]
+        direction TB
+
+        subgraph COMPUTE ["⚡ Public Subnet A · us-east-1a"]
+            direction TB
+            API["🚀 Fastify API Server\nport 3000"]
+            Workers["⚙️ BullMQ Workers"]
+        end
+
+        subgraph QUEUE ["📨 Task Queue"]
+            Redis[("🔴 Redis 7\nBroker")]
+        end
+
+        subgraph DATA ["💾 DB Subnet Group"]
+            Aurora[("🐘 Amazon Aurora\nPostgreSQL 16 + pgvector")]
+        end
     end
 
-    subgraph DB [PostgreSQL 16 + pgvector]
-        Router <--> |Kysely SQL| Relational[Relational: users, sessions, oauth_accounts, sources]
-        Router <--> |Kysely SQL| Blackboard[Blackboard: blackboard, nudge_snoozes]
-        WorkerProcesses <--> |Kysely SQL| PartitionedTable[(Partitioned Episodes: monthly tables)]
-        WorkerProcesses <--> |Kysely SQL| SemanticMemory[(Semantic Memory: facts, open_loops)]
-        WorkerProcesses <--> |Kysely SQL| GraphTables[(Graph Network: entities, edges)]
+    subgraph AWS_SVC ["☁️ AWS Services"]
+        S3[("📦 Amazon S3\nArtifact Storage")]
     end
 
-    subgraph QueueSystem [BullMQ Task Runner]
-        Router --> |Enqueue jobs| Redis[(Redis Broker)]
-        Redis <--> WorkerProcesses[Worker Scheduler / worker/]
+    subgraph AI ["🤖 AI & Integrations"]
+        Gemini["✨ Gemini API"]
+        Qwen["🧪 Qwen LLM"]
+        Google["📧 Google Workspace"]
+        MSFT["📅 Microsoft Graph"]
     end
 
-    subgraph WorkerProcesses [BullMQ Background Workers]
-        IngestWorker[Ingest Worker]
-        ExtractWorker[Extract Worker]
-        ConsolidateWorker[Consolidate Worker]
-        NudgeWorker[Nudge Worker]
-    end
+    %% ── User → Frontend ──
+    User -- "opens app" --> Dashboard
+    User -- "speaks" --> VoiceUI
+    User -- "asks question" --> ChatUI
+    User -- "explores graph" --> Graph3D
+    User -- "signs in" --> AuthUI
 
-    subgraph External [External APIs & Services]
-        IngestWorker --> |OAuth Contacts/Mail/Calendar| APIs[Google APIs & MS Graph]
-        ExtractWorker & AskHandler --> |Semantic Embeddings / Q&A| Gemini[Gemini API / Qwen LLM]
-        IngestWorker --> |Raw Files| LocalFS[(Local Filesystem / AWS S3)]
-    end
+    %% ── Frontend → API ──
+    Dashboard -- "HTTPS / JWT" --> API
+    VoiceUI -- "audio upload" --> API
+    ChatUI -- "search query" --> API
+    Graph3D -- "fetch nodes" --> API
+    AuthUI -- "OAuth tokens" --> API
 
-    %% Internal Worker Actions
-    IngestWorker --> |Creates episodes| Redis
-    Redis --> ExtractWorker
-    ExtractWorker --> |Writes facts & entities| GraphTables
-    ConsolidateWorker --> |Alias merge & decay| GraphTables
-    ConsolidateWorker --> |Builds co_occurs links| GraphTables
-    NudgeWorker --> |Writes proactive nudges| Blackboard
+    %% ── API ↔ Data Stores ──
+    API <-- "Kysely SQL\nrelational + vector" --> Aurora
+    API <-- "enqueue jobs" --> Redis
+    API -- "read/write files" --> S3
 
-    %% Styling Classes
-    classDef frontend fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
-    classDef backend fill:#0f172a,stroke:#c084fc,stroke-width:2px,color:#f8fafc;
-    classDef db fill:#0f172a,stroke:#34d399,stroke-width:2px,color:#f8fafc;
-    classDef queue fill:#0f172a,stroke:#fbbf24,stroke-width:2px,color:#f8fafc;
-    classDef worker fill:#0f172a,stroke:#f472b6,stroke-width:2px,color:#f8fafc;
-    classDef external fill:#0f172a,stroke:#94a3b8,stroke-width:2px,color:#f8fafc;
+    %% ── Workers ↔ Everything ──
+    Redis -- "dequeue" --> Workers
+    Workers <-- "write facts,\nentities, edges" --> Aurora
+    Workers -- "store raw audio" --> S3
+    Workers -- "embeddings\n& extraction" --> Gemini
+    Workers -- "summarization" --> Qwen
+    Workers -- "ingest mail\n& calendar" --> Google
+    Workers -- "ingest contacts\n& events" --> MSFT
 
-    %% Subgraph Styling
-    style Frontend fill:#0f172a,stroke:#0284c7,stroke-width:3px,color:#f8fafc
-    style Backend fill:#0f172a,stroke:#7c3aed,stroke-width:3px,color:#f8fafc
-    style DB fill:#0f172a,stroke:#059669,stroke-width:3px,color:#f8fafc
-    style QueueSystem fill:#0f172a,stroke:#d97706,stroke-width:3px,color:#f8fafc
-    style WorkerProcesses fill:#0f172a,stroke:#db2777,stroke-width:3px,color:#f8fafc
-    style External fill:#0f172a,stroke:#475569,stroke-width:3px,color:#f8fafc
+    %% ── Node Styling ──
+    classDef user fill:#6d28d9,stroke:#a78bfa,stroke-width:3px,color:#f8fafc,font-weight:bold
+    classDef frontend fill:#0c4a6e,stroke:#38bdf8,stroke-width:2px,color:#e0f2fe
+    classDef compute fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#d1fae5
+    classDef queue fill:#78350f,stroke:#fbbf24,stroke-width:2px,color:#fef3c7
+    classDef db fill:#1e3a5f,stroke:#7dd3fc,stroke-width:2px,color:#e0f2fe
+    classDef aws fill:#4a2600,stroke:#ff9900,stroke-width:2px,color:#fff7ed
+    classDef ai fill:#3b0764,stroke:#c084fc,stroke-width:2px,color:#f3e8ff
 
-    class UI,Pages,Components,Client frontend;
-    class Router,AuthHandler,AskHandler,ConfigHandler backend;
-    class Relational,Blackboard,PartitionedTable,SemanticMemory,GraphTables db;
-    class Redis queue;
-    class IngestWorker,ExtractWorker,ConsolidateWorker,NudgeWorker worker;
-    class APIs,Gemini,LocalFS external;
+    class User user
+    class Dashboard,Graph3D,VoiceUI,ChatUI,AuthUI frontend
+    class API,Workers compute
+    class Redis queue
+    class Aurora db
+    class S3 aws
+    class Gemini,Qwen,Google,MSFT ai
+
+    %% ── Subgraph Styling ──
+    style VERCEL fill:#0c4a6e,stroke:#0284c7,stroke-width:3px,color:#e0f2fe,stroke-dasharray:6 3
+    style VPC fill:#0f2b1c,stroke:#10b981,stroke-width:3px,color:#d1fae5,stroke-dasharray:8 4
+    style COMPUTE fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#d1fae5
+    style QUEUE fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7
+    style DATA fill:#0c2d48,stroke:#38bdf8,stroke-width:2px,color:#e0f2fe
+    style AWS_SVC fill:#431407,stroke:#ff9900,stroke-width:3px,color:#fff7ed,stroke-dasharray:6 3
+    style AI fill:#2e1065,stroke:#a855f7,stroke-width:3px,color:#f3e8ff,stroke-dasharray:6 3
+
+    %% ── Link Styling ──
+    linkStyle 0,1,2,3,4 stroke:#a78bfa,stroke-width:2px
+    linkStyle 5,6,7,8,9 stroke:#38bdf8,stroke-width:2.5px
+    linkStyle 10,11,12 stroke:#34d399,stroke-width:2.5px
+    linkStyle 13,14,15,16,17,18,19 stroke:#c084fc,stroke-width:2px,stroke-dasharray:5 3
 ```
 
 ---

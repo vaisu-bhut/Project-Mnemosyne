@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Brain } from "lucide-react";
+import Image from "next/image";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { registerSchema } from "@/lib/auth/schemas";
 import { ApiError } from "@/lib/api/client";
@@ -65,7 +65,7 @@ export default function RegisterPage() {
     <main className="flex min-h-svh items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <Brain className="size-7 text-primary" />
+          <Image src="/logo-transparent.svg" alt="Mnemosyne logo" width={36} height={36} priority />
           <CardTitle className="text-xl">Create your account</CardTitle>
           <CardDescription>Start building your personal memory.</CardDescription>
         </CardHeader>

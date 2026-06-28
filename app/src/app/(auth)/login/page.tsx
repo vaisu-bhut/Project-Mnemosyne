@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Brain } from "lucide-react";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { loginSchema } from "@/lib/auth/schemas";
 import { ApiError } from "@/lib/api/client";
@@ -64,7 +64,13 @@ export default function LoginPage() {
       <Card className="w-full max-w-sm relative z-10 glass-strong border-border/40 shadow-2xl animate-fade-in">
         <CardHeader className="items-center text-center pb-8">
           <div className="rounded-2xl bg-primary/10 p-3 mb-2 animate-glow-pulse">
-            <Brain className="size-8 text-primary" />
+            <Image
+              src="/logo-transparent.svg"
+              alt="Mnemosyne logo"
+              width={40}
+              height={40}
+              priority
+            />
           </div>
           <CardTitle className="text-2xl font-semibold tracking-tight">Welcome back</CardTitle>
           <CardDescription>Sign in to your Mnemosyne memory.</CardDescription>

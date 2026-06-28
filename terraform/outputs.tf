@@ -1,6 +1,6 @@
-output "ecs_public_ip" {
-  description = "The public IP of the Alibaba Cloud ECS instance."
-  value       = alicloud_instance.backend.public_ip
+output "ec2_public_ip" {
+  description = "The public IP of the EC2 backend instance."
+  value       = aws_instance.backend.public_ip
 }
 
 output "s3_bucket_name" {
@@ -9,6 +9,6 @@ output "s3_bucket_name" {
 }
 
 output "rds_endpoint" {
-  description = "The endpoint of the RDS PostgreSQL instance."
-  value       = aws_db_instance.postgres.endpoint
+  description = "The endpoint of the RDS Aurora PostgreSQL cluster."
+  value       = aws_rds_cluster.postgres.endpoint
 }

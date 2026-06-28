@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   description: "Your proactive personal-memory system.",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Mnemosyne", statusBarStyle: "default" },
-  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  icons: { icon: "/logo-transparent.svg", apple: "/logo-transparent.svg" },
 };
 
 export const viewport: Viewport = {

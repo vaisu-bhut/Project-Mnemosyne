@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   CalendarClock,
@@ -60,13 +61,23 @@ export function Sidebar() {
     >
       <VoiceCaptureDialog open={captureOpen} onOpenChange={setCaptureOpen} />
 
-      {/* Brand — type only. */}
-      <div className="flex h-12 items-center px-5">
+      {/* Brand — logo + name. */}
+      <div className="flex h-12 items-center px-4 gap-2.5">
         <Link
           href="/app"
-          className="text-serif text-[19px] font-semibold italic leading-none tracking-tight text-foreground"
+          className="flex items-center gap-2.5"
         >
-          Mnemosyne
+          <Image
+            src="/logo-transparent.svg"
+            alt="Mnemosyne logo"
+            width={28}
+            height={28}
+            className="shrink-0"
+            priority
+          />
+          <span className="text-serif text-[19px] font-semibold italic leading-none tracking-tight text-foreground">
+            Mnemosyne
+          </span>
         </Link>
       </div>
       <div aria-hidden className="h-px bg-border" />

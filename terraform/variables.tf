@@ -15,23 +15,6 @@ variable "aws_secret_key" {
   sensitive   = true
 }
 
-variable "alicloud_region" {
-  description = "The Alibaba Cloud region to deploy the ECS instance in."
-  default     = "us-east-1"
-}
-
-variable "alicloud_access_key" {
-  description = "Alibaba Cloud Access Key ID"
-  type        = string
-  sensitive   = true
-}
-
-variable "alicloud_secret_key" {
-  description = "Alibaba Cloud Secret Access Key"
-  type        = string
-  sensitive   = true
-}
-
 variable "qwen_api_key" {
   description = "Qwen Cloud API Key for the backend service"
   type        = string
@@ -39,8 +22,8 @@ variable "qwen_api_key" {
 }
 
 variable "instance_type" {
-  description = "The ECS instance type."
-  default     = "ecs.s6-c1m2.small"
+  description = "The EC2 instance type."
+  default     = "t3.medium"
 }
 
 variable "project_name" {
