@@ -9,6 +9,6 @@ output "s3_bucket_name" {
 }
 
 output "rds_endpoint" {
-  description = "The endpoint of the RDS Aurora PostgreSQL cluster."
-  value       = aws_rds_cluster.postgres.endpoint
+  description = "The endpoint of the RDS PostgreSQL instance."
+  value       = aws_db_instance.postgres.endpoint
 }

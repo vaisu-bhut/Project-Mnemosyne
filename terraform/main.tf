@@ -186,30 +186,20 @@ resource "aws_db_subnet_group" "db_subnet_group" {
   }
 }
 
-resource "aws_rds_cluster" "postgres" {
-  cluster_identifier     = "${var.project_name}-db-cluster"
-  engine                 = "aurora-postgresql"
-  engine_version         = "16.1"
-  database_name          = "mnemosyne"
-  master_username        = "mnemosyne"
-  master_password        = "Mnemosyne2026"
+resource "aws_db_instance" "postgres" {
+  identifier             = "${var.project_name}-db"
+  engine                 = "postgres"
+  engine_version         = "16.3"
+  instance_class         = "db.t3.micro"
+  allocated_storage      = 20
+  storage_type           = "gp2"
+  db_name                = "mnemosyne"
+  username               = "mnemosyne"
+  password               = "Mnemosyne2026"
   db_subnet_group_name   = aws_db_subnet_group.db_subnet_group.name
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   skip_final_snapshot    = true
-
-  tags = {
-    Project = var.project_name
-  }
-}
-
-resource "aws_rds_cluster_instance" "postgres_instances" {
-  count              = 1
-  identifier         = "${var.project_name}-db-instance-${count.index}"
-  cluster_identifier = aws_rds_cluster.postgres.id
-  instance_class     = "db.t3.medium"
-  engine             = aws_rds_cluster.postgres.engine
-  engine_version     = aws_rds_cluster.postgres.engine_version
-  db_subnet_group_name   = aws_db_subnet_group.db_subnet_group.name
+  publicly_accessible    = false
 
   tags = {
     Project = var.project_name
@@ -262,7 +252,7 @@ AWS_SECRET_ACCESS_KEY=${var.aws_secret_key}
 QWEN_API_KEY=${var.qwen_api_key}
 
 S3_BUCKET_NAME=${aws_s3_bucket.artifacts.bucket}
-DATABASE_URL=postgres://${aws_rds_cluster.postgres.master_username}:${aws_rds_cluster.postgres.master_password}@${aws_rds_cluster.postgres.endpoint}:${aws_rds_cluster.postgres.port}/${aws_rds_cluster.postgres.database_name}
+DATABASE_URL=postgres://${aws_db_instance.postgres.username}:${aws_db_instance.postgres.password}@${aws_db_instance.postgres.endpoint}/${aws_db_instance.postgres.db_name}
 REDIS_URL=redis://redis:6379
 
 VIRTUAL_HOST=api.clestiq.com
