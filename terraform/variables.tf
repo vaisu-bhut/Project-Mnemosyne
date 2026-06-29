@@ -23,7 +23,7 @@ variable "qwen_api_key" {
 
 variable "instance_type" {
   description = "The EC2 instance type."
-  default     = "t2.micro"
+  default     = "t3.micro"
 }
 
 variable "project_name" {
