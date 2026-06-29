@@ -47,10 +47,12 @@ describe("people graph", () => {
     expect(res.peopleClassified).toBe(2);
 
     const graph = await peopleGraph(db, userId);
-    expect(graph.nodes).toHaveLength(2);
-    expect(graph.links).toHaveLength(1);
-    expect(graph.links[0]!.weight).toBe(2);
-    expect(graph.nodes.every((n) => n.circle === "work")).toBe(true);
+    const personNodes = graph.nodes.filter((n) => n.type === "person");
+    const coOccursLinks = graph.links.filter((l) => l.weight !== 1.5); // exclude mentioned_in links
+    expect(personNodes).toHaveLength(2);
+    expect(coOccursLinks).toHaveLength(1);
+    expect(coOccursLinks[0]!.weight).toBe(2);
+    expect(personNodes.every((n) => n.circle === "work")).toBe(true);
   });
 
   it("is idempotent — re-running does not duplicate edges", async () => {
@@ -63,7 +65,8 @@ describe("people graph", () => {
     await buildPeopleGraph(db, userId);
 
     const graph = await peopleGraph(db, userId);
-    expect(graph.links).toHaveLength(1);
+    const coOccursLinks = graph.links.filter((l) => l.weight !== 1.5);
+    expect(coOccursLinks).toHaveLength(1);
   });
 
   it("does not link a person to themselves or to a lone attendee", async () => {
@@ -73,6 +76,7 @@ describe("people graph", () => {
 
     await buildPeopleGraph(db, userId);
     const graph = await peopleGraph(db, userId);
-    expect(graph.links).toHaveLength(0);
+    const coOccursLinks = graph.links.filter((l) => l.weight !== 1.5);
+    expect(coOccursLinks).toHaveLength(0);
   });
 });
